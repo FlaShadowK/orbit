@@ -9,7 +9,10 @@ Build a program, push it and set up its deployment from a single session.
 - **Spaces**: one per project folder, each with its own tabs (agents, terminals, SSH, editors, SFTP browsers). The layout is saved and restored.
 - **Agent tabs**: Claude Code, Codex, Gemini CLI, opencode, or any custom command (Settings). Each tab shows a live status badge (working / needs input / finished). You get a desktop notification when an agent needs you.
   - Claude tabs get the Orbit MCP server (`--mcp-config`) and status hooks (`--settings`) injected automatically. They resume their own conversation after an app restart (`--session-id` / `--resume`).
-- **Terminal**: xterm.js + node-pty with your login shell and PATH, split panes (⌘D / ⌘⇧D).
+- **Terminal**: xterm.js (GPU renderer) + node-pty with your login shell and PATH, split panes (⌘D / ⌘⇧D).
+  - Paste an image (⌘V): Claude tabs get it as an attachment (`[Image #1]`). Other tabs get the path of a saved temp file.
+  - Drag & drop files to insert their paths.
+  - macOS keys: ⌘⌫ delete line, ⌥⌫ delete word, ⌘←/→ line start/end, ⌥←/→ word jump, ⇧↵ newline in agent prompts.
 - **Editor**: Monaco (the VS Code editor). Files reload live when an agent changes them on disk. Remote files open over SFTP and save back with ⌘S.
 - **Servers**: host, user, key / password / ssh-agent, jump host, default dir, tags and notes for agents. Secrets are encrypted with the OS keychain (Electron `safeStorage`). Import from `~/.ssh/config`.
 - **Orbit MCP server**: `http://127.0.0.1:47821/mcp` (bearer token). Tools:

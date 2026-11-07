@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { OrbitApi } from './index.d'
 
 const inv = (ch: string) => (...args: unknown[]) => ipcRenderer.invoke(ch, ...args)
@@ -27,6 +27,8 @@ const api: OrbitApi = {
   termWrite: (id, data) => ipcRenderer.send('term:write', id, data),
   termResize: (id, cols, rows) => ipcRenderer.send('term:resize', id, cols, rows),
   termKill: inv('term:kill') as OrbitApi['termKill'],
+  saveImage: inv('clipboard:saveImage') as OrbitApi['saveImage'],
+  pathForFile: (file) => webUtils.getPathForFile(file),
   onTermData: (cb) => listen('term:data', cb),
   onTermExit: (cb) => listen('term:exit', cb),
 

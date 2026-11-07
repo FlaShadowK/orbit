@@ -22,6 +22,8 @@ export interface OrbitApi {
   termWrite(id: string, data: string): void
   termResize(id: string, cols: number, rows: number): void
   termKill(id: string): Promise<void>
+  saveImage(bytes: Uint8Array, mime: string): Promise<string>
+  pathForFile(file: File): string
   onTermData(cb: (id: string, data: string) => void): () => void
   onTermExit(cb: (id: string, code: number | null) => void): () => void
 

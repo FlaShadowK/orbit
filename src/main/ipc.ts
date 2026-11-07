@@ -1,6 +1,6 @@
 import { app, dialog, ipcMain, shell, BrowserWindow } from 'electron'
 import { execFile } from 'child_process'
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { homedir, userInfo } from 'os'
 import { join } from 'path'
 import type { ServerInput, SessionSpec, Settings, Space } from '@shared/types'
@@ -58,6 +58,15 @@ export function registerIpc(): void {
   ipcMain.on('term:write', (_e, id: string, data: string) => writeSession(id, data))
   ipcMain.on('term:resize', (_e, id: string, cols: number, rows: number) => resizeSession(id, cols, rows))
   h('term:kill', (_e, id: string) => killSession(id))
+  // save a pasted image to a temp file so it can be pasted as a path
+  h('clipboard:saveImage', (_e, bytes: Uint8Array, mime: string) => {
+    const ext = (mime.split('/')[1] ?? 'png').replace('jpeg', 'jpg').replace(/[^a-z0-9]/gi, '') || 'png'
+    const dir = join(app.getPath('temp'), 'orbit-paste')
+    mkdirSync(dir, { recursive: true })
+    const file = join(dir, `image-${Date.now()}.${ext}`)
+    writeFileSync(file, Buffer.from(bytes))
+    return file
+  })
 
   // local files
   h('fs:list', (_e, dir: string) => listDir(dir))
