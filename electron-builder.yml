@@ -1,0 +1,18 @@
+appId: dev.omerovic.orbit
+productName: Orbit
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**
+  - package.json
+asarUnpack:
+  - node_modules/node-pty/**
+mac:
+  category: public.app-category.developer-tools
+  target: [dmg]
+win:
+  target: [nsis]
+linux:
+  target: [AppImage, deb]
+  category: Development
