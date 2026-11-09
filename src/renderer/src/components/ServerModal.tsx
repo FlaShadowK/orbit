@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { AuthMethod, Server, ServerInput } from '@shared/types'
+import type { AuthMethod, BeszelSystemRef, Server, ServerInput } from '@shared/types'
 import { useStore } from '@/store'
 import { SPACE_COLORS } from '@/lib/util'
 
@@ -9,7 +9,11 @@ export function ServerModal() {
   const { serverModal, servers, set, notify } = useStore()
   const editing: Server | undefined = serverModal?.mode === 'edit' ? serverModal.server : undefined
   const [form, setForm] = useState<ServerInput>(EMPTY)
-  const [secretFlags, setSecretFlags] = useState({ password: false, privateKey: false, passphrase: false })
+  const [secretFlags, setSecretFlags] = useState({ password: false, privateKey: false, passphrase: false, beszelPassword: false })
+  const [beszelOn, setBeszelOn] = useState(false)
+  const [beszelPassword, setBeszelPassword] = useState('')
+  const [systems, setSystems] = useState<BeszelSystemRef[] | null>(null)
+  const [beszelMsg, setBeszelMsg] = useState<string | null>(null)
   const [password, setPassword] = useState('')
   const [privateKey, setPrivateKey] = useState('')
   const [passphrase, setPassphrase] = useState('')
@@ -25,14 +29,37 @@ export function ServerModal() {
     setPrivateKey('')
     setPassphrase('')
     setTesting(null)
+    setBeszelOn(!!editing?.beszel)
+    setBeszelPassword('')
+    setSystems(null)
+    setBeszelMsg(null)
     if (editing) window.orbit.serverSecretFlags(editing.id).then(setSecretFlags)
-    else setSecretFlags({ password: false, privateKey: false, passphrase: false })
+    else setSecretFlags({ password: false, privateKey: false, passphrase: false, beszelPassword: false })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverModal])
 
   if (!serverModal) return null
   const close = (): void => set({ serverModal: null })
   const upd = (patch: Partial<ServerInput>): void => setForm((f) => ({ ...f, ...patch }))
+  const updBeszel = (patch: Partial<NonNullable<ServerInput['beszel']>>): void =>
+    setForm((f) => ({ ...f, beszel: { url: '', email: '', ...f.beszel, ...patch } }))
+
+  /** sign in to the hub and list its systems; pick the one matching this server when obvious */
+  const connectBeszel = async (): Promise<void> => {
+    setBeszelMsg('Connecting…')
+    try {
+      const list = await window.orbit.beszelSystems(editing?.id, { url: form.beszel?.url ?? '', email: form.beszel?.email ?? '', password: beszelPassword })
+      setSystems(list)
+      const guess =
+        list.find((x) => x.id === form.beszel?.systemId) ??
+        list.find((x) => [form.name, form.host].some((v) => v && (x.name === v || x.host === v))) ??
+        (list.length === 1 ? list[0] : undefined)
+      if (guess) updBeszel({ systemId: guess.id, systemName: guess.name })
+      setBeszelMsg(list.length ? `✓ Connected — ${list.length} system${list.length === 1 ? '' : 's'}` : '✗ This account cannot see any systems')
+    } catch (e) {
+      setBeszelMsg(`✗ ${(e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`)
+    }
+  }
 
   const save = async (test = false): Promise<Server | undefined> => {
     if (!form.host.trim() || !form.username.trim()) {
@@ -47,7 +74,8 @@ export function ServerModal() {
         host: form.host.trim(),
         port: Number(form.port) || 22,
         tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
-        secret: { password, privateKey, passphrase }
+        beszel: beszelOn && form.beszel?.url ? form.beszel : undefined,
+        secret: { password, privateKey, passphrase, beszelPassword }
       })
       set({ servers: await window.orbit.listServers(), serverModal: { mode: 'edit', server: saved } })
       if (test) {
@@ -158,6 +186,50 @@ export function ServerModal() {
             Notes for agents
             <textarea rows={2} value={form.notes ?? ''} placeholder="e.g. Runs docker compose in /srv/app, nginx reverse proxy, deploy via git pull" onChange={(e) => upd({ notes: e.target.value || undefined })} />
           </label>
+          <div className="span2 beszel-box">
+            <label className="check-row beszel-toggle">
+              <input type="checkbox" checked={beszelOn} onChange={(e) => setBeszelOn(e.target.checked)} />
+              <span className="beszel-title">Live stats from Beszel</span>
+              <span className="muted">· shows CPU, memory, disk and more under the server</span>
+            </label>
+            {beszelOn && (
+              <div className="beszel-fields">
+                <label className="span2">
+                  Hub URL
+                  <input value={form.beszel?.url ?? ''} placeholder="https://beszel.example.com" onChange={(e) => updBeszel({ url: e.target.value })} />
+                </label>
+                <label>
+                  Email
+                  <input value={form.beszel?.email ?? ''} placeholder="you@example.com" onChange={(e) => updBeszel({ email: e.target.value })} />
+                </label>
+                <label>
+                  Password {secretFlags.beszelPassword && <span className="muted">(saved)</span>}
+                  <input type="password" value={beszelPassword} onChange={(e) => setBeszelPassword(e.target.value)} />
+                </label>
+                <div className="span2 beszel-connect">
+                  <button className="btn" onClick={connectBeszel} disabled={!form.beszel?.url || !form.beszel?.email || (!beszelPassword && !secretFlags.beszelPassword)}>
+                    Connect
+                  </button>
+                  {systems && systems.length > 0 && (
+                    <select
+                      value={form.beszel?.systemId ?? ''}
+                      onChange={(e) => {
+                        const x = systems.find((y) => y.id === e.target.value)
+                        updBeszel({ systemId: x?.id, systemName: x?.name })
+                      }}
+                    >
+                      <option value="">Choose the system for this server…</option>
+                      {systems.map((x) => (
+                        <option key={x.id} value={x.id}>{x.name} ({x.status})</option>
+                      ))}
+                    </select>
+                  )}
+                  {!systems && form.beszel?.systemName && <span className="muted small">System: {form.beszel.systemName}</span>}
+                </div>
+                {beszelMsg && <div className={`span2 test-result ${beszelMsg.startsWith('✓') ? 'ok' : beszelMsg.startsWith('✗') ? 'bad' : ''}`}>{beszelMsg}</div>}
+              </div>
+            )}
+          </div>
         </div>
         {testing && <div className={`test-result ${testing.startsWith('✓') ? 'ok' : testing.startsWith('✗') ? 'bad' : ''}`}>{testing}</div>}
         <div className="modal-actions">

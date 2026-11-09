@@ -32,6 +32,8 @@ interface State {
   update: UpdateState
   /** git status per space root */
   git: Record<string, GitStatus>
+  /** server whose stats tiles are being customized */
+  statsEditor?: string
 
   init(): Promise<void>
   addSpace(root: string, name?: string): Space

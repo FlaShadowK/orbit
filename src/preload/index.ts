@@ -44,6 +44,8 @@ const api: OrbitApi = {
   removeServer: inv('servers:remove') as OrbitApi['removeServer'],
   testServer: inv('servers:test') as OrbitApi['testServer'],
   importSshConfig: inv('servers:importSshConfig') as OrbitApi['importSshConfig'],
+  beszelSystems: inv('beszel:systems') as OrbitApi['beszelSystems'],
+  beszelSnapshot: inv('beszel:snapshot') as OrbitApi['beszelSnapshot'],
 
   sftpHome: inv('sftp:home') as OrbitApi['sftpHome'],
   sftpList: inv('sftp:list') as OrbitApi['sftpList'],

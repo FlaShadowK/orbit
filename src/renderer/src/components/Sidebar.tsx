@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { spaceActivity, spaceStatus, useStore } from '@/store'
 import { Icon } from './Icon'
 import { StatusDot } from './StatusDot'
+import { ServerStats } from './ServerStats'
 import { keyLabel } from '@shared/keys'
 import { IS_MAC } from '@/lib/util'
 
@@ -116,7 +117,8 @@ export function Sidebar() {
         )}
         <div className="server-list">
           {servers.map((srv) => (
-            <div key={srv.id} className="server-row" onDoubleClick={() => openSsh(srv)} title={`${srv.username}@${srv.host}:${srv.port}`}>
+            <div key={srv.id} className="server-item">
+            <div className="server-row" onDoubleClick={() => openSsh(srv)} title={`${srv.username}@${srv.host}:${srv.port}`}>
               <span className="server-led" style={{ background: srv.color }} />
               <div className="server-text">
                 <span className="server-name">{srv.name}</span>
@@ -127,6 +129,8 @@ export function Sidebar() {
                 <button className="icon-btn" title="Browse files (SFTP)" onClick={() => openSftp(srv)}><Icon name="files" /></button>
                 <button className="icon-btn" title="Edit" onClick={() => set({ serverModal: { mode: 'edit', server: srv } })}><Icon name="edit" /></button>
               </div>
+            </div>
+            <ServerStats server={srv} />
             </div>
           ))}
         </div>

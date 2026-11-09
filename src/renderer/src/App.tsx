@@ -11,6 +11,7 @@ import { ServerModal } from './components/ServerModal'
 import { Palette } from './components/Palette'
 import { ActivityPanel } from './components/ActivityPanel'
 import { SettingsModal } from './components/SettingsModal'
+import { StatsEditor } from './components/ServerStats'
 import { Icon } from './components/Icon'
 import { keyLabel, spaceIndexShortcut, tabIndexShortcut } from '@shared/keys'
 import { IS_MAC } from './lib/util'
@@ -244,6 +245,7 @@ function MainApp() {
       </main>
       <ServerModal />
       <SettingsModal />
+      <StatsEditor />
       <Palette />
       {state.toast && <div className={`toast ${state.toast.kind}`}>{state.toast.text}</div>}
     </div>

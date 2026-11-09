@@ -55,6 +55,74 @@ export interface Server {
   /** default directory for agent commands / sftp */
   defaultDir?: string
   notes?: string
+  /** live stats from a Beszel hub (password lives in ServerSecret.beszelPassword) */
+  beszel?: BeszelConfig
+}
+
+// ---------- Beszel monitoring ----------
+export type StatMetric = 'cpu' | 'mem' | 'disk' | 'net' | 'load' | 'uptime' | 'containers' | 'temp'
+/** value = big number, gauge = ring, spark = line chart, bar = meter, list = top containers */
+export type WidgetType = 'value' | 'gauge' | 'spark' | 'bar' | 'list'
+export type StatRange = '1h' | '12h' | '24h' | '7d'
+
+export interface StatWidget {
+  id: string
+  type: WidgetType
+  metric: StatMetric
+  /** columns in the 2-column tile grid */
+  span: 1 | 2
+}
+
+export interface BeszelConfig {
+  /** hub URL, e.g. https://beszel.example.com */
+  url: string
+  email: string
+  systemId?: string
+  systemName?: string
+  widgets?: StatWidget[]
+  range?: StatRange
+}
+
+export interface BeszelSystemRef {
+  id: string
+  name: string
+  host: string
+  status: string
+}
+
+export interface StatPoint {
+  t: number
+  cpu: number
+  mem: number
+  disk: number
+  /** bytes/s sent + received */
+  net: number
+  load: number
+  temp?: number
+}
+
+export interface BeszelSnapshot {
+  name: string
+  status: string
+  /** when the hub last heard from the agent (ms) */
+  updated: number
+  cpu: number
+  cores?: number
+  memPct: number
+  memUsed: number
+  memTotal: number
+  diskPct: number
+  diskUsed: number
+  diskTotal: number
+  /** bytes/s */
+  netSent: number
+  netRecv: number
+  load: number[]
+  /** seconds */
+  uptime: number
+  temp?: number
+  series: StatPoint[]
+  containers: { name: string; cpu: number; mem: number }[]
 }
 
 /** secrets never leave main process except into the edit form */
@@ -62,6 +130,7 @@ export interface ServerSecret {
   password?: string
   privateKey?: string
   passphrase?: string
+  beszelPassword?: string
 }
 
 export interface ServerInput extends Omit<Server, 'id'> {

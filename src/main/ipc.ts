@@ -3,12 +3,13 @@ import { execFile } from 'child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { homedir, userInfo } from 'os'
 import { join } from 'path'
-import type { GitChange, ServerInput, SessionSpec, Settings, Space } from '@shared/types'
+import type { GitChange, ServerInput, SessionSpec, Settings, Space, StatRange } from '@shared/types'
 import { store } from './store'
 import * as ssh from './ssh'
 import { listAgents } from './agents'
 import { foregroundProcesses, killSession, resizeSession, startSession, writeSession } from './sessions'
 import * as git from './git'
+import * as beszel from './beszel'
 import { listDir, readFile, watchRoot, writeFile } from './files'
 import { getActivity, getStatuses, setTabTitle } from './events'
 import { mcpEndpoint } from './mcp'
@@ -92,10 +93,17 @@ export function registerIpc(): void {
   h('servers:secret', (_e, id: string) => {
     const s = store.getSecret(id)
     // only reveal which fields are set, never the values
-    return { password: !!s.password, privateKey: !!s.privateKey, passphrase: !!s.passphrase }
+    return { password: !!s.password, privateKey: !!s.privateKey, passphrase: !!s.passphrase, beszelPassword: !!s.beszelPassword }
   })
+  h('beszel:systems', (_e, serverId: string | undefined, creds: { url: string; email: string; password?: string }) =>
+    beszel.listSystems(serverId, creds)
+  )
+  h('beszel:snapshot', (_e, serverId: string, range?: StatRange) => beszel.snapshot(serverId, range))
   h('servers:save', (_e, input: ServerInput) => {
-    if (input.id) ssh.disconnect(input.id)
+    if (input.id) {
+      ssh.disconnect(input.id)
+      beszel.invalidate(input.id)
+    }
     return store.upsertServer(input)
   })
   h('servers:remove', (_e, id: string) => {

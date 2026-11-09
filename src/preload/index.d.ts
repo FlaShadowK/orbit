@@ -1,6 +1,6 @@
 import type {
   ActivityEntry, AgentInfo, AgentStatus, DirEntry, MainEvent, OrbitInfo, Server, ServerInput,
-  SessionSpec, Settings, Space, UpdateState, GitChange, GitStatus
+  SessionSpec, Settings, Space, UpdateState, GitChange, GitStatus, BeszelSnapshot, BeszelSystemRef, StatRange
 } from '../shared/types'
 
 export interface OrbitApi {
@@ -35,11 +35,14 @@ export interface OrbitApi {
   fsWatch(root: string): Promise<void>
 
   listServers(): Promise<Server[]>
-  serverSecretFlags(id: string): Promise<{ password: boolean; privateKey: boolean; passphrase: boolean }>
+  serverSecretFlags(id: string): Promise<{ password: boolean; privateKey: boolean; passphrase: boolean; beszelPassword: boolean }>
   saveServer(input: ServerInput): Promise<Server>
   removeServer(id: string): Promise<void>
   testServer(id: string): Promise<string>
   importSshConfig(): Promise<number>
+  /** systems visible to a Beszel account (password optional when already saved for serverId) */
+  beszelSystems(serverId: string | undefined, creds: { url: string; email: string; password?: string }): Promise<BeszelSystemRef[]>
+  beszelSnapshot(serverId: string, range?: StatRange): Promise<BeszelSnapshot>
 
   sftpHome(serverId: string): Promise<string>
   sftpList(serverId: string, path: string): Promise<DirEntry[]>

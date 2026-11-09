@@ -484,3 +484,81 @@ button.update-pill:hover { border-color: var(--accent); }
 .ghost-btn { display: flex; align-items: center; gap: 5px; padding: 4px 9px; font-size: 11.5px; background: transparent; }
 .diff-wrap { flex: 1; min-height: 0; position: relative; }
 .diff-host { position: absolute; inset: 0; }
+
+/* ---------- server stats (Beszel) ---------- */
+.server-item { border-radius: 8px; }
+.server-item + .server-item { margin-top: 2px; }
+.server-stats { padding: 2px 8px 8px 23px; }
+.stats-head { display: flex; align-items: center; gap: 6px; height: 18px; }
+.stats-led { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-3); flex: none; }
+.stats-led.up { background: var(--ok); box-shadow: 0 0 5px rgba(126, 231, 135, 0.7); }
+.stats-led.down { background: var(--bad); box-shadow: 0 0 5px rgba(255, 107, 129, 0.7); }
+.stats-meta { flex: 1; font-size: 10px; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stats-edit { opacity: 0; padding: 2px; }
+.server-item:hover .stats-edit { opacity: 1; }
+.stats-error { font-size: 10.5px; color: var(--bad); padding: 2px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 4px; }
+.stat-tile {
+  position: relative; min-width: 0; padding: 4px 6px; border-radius: 6px; background: rgba(255, 255, 255, 0.025);
+  display: flex; flex-direction: column; gap: 1px; overflow: hidden;
+}
+.tile-row { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.tile-label { font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-3); }
+.tile-value { font: 600 13px var(--mono); color: var(--fg); line-height: 1.15; white-space: nowrap; }
+.tile-value.small { font-size: 11px; color: var(--metric); }
+.tile-detail { font-size: 9px; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.25; }
+.tile-meter { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; margin: 2px 0 1px; }
+.tile-meter i { display: block; height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+.spark { width: 100%; height: 22px; display: block; cursor: crosshair; overflow: visible; }
+.spark-cursor { stroke: var(--fg-2); stroke-width: 1; stroke-dasharray: 2 2; }
+.gauge-wrap { display: flex; align-items: center; gap: 6px; }
+.t-gauge { align-items: center; padding: 2px 4px; }
+.gauge { width: 44px; height: 44px; flex: none; }
+.gauge-track, .gauge-fill { fill: none; stroke-width: 4.5; stroke-linecap: round; }
+.gauge-track { stroke: var(--line-2); }
+.gauge-fill { transition: stroke-dasharray 0.6s ease; }
+.gauge-text { font: 600 12px var(--mono); fill: var(--fg); text-anchor: middle; }
+.gauge-sub { font: 600 8px var(--sans, sans-serif); fill: var(--fg-3); text-anchor: middle; letter-spacing: 0.08em; text-transform: uppercase; }
+.gauge-side { white-space: normal; }
+.tile-list { display: flex; flex-direction: column; gap: 1px; margin-top: 1px; }
+.tile-list-row { display: grid; grid-template-columns: minmax(0, 1fr) 40px 34px; align-items: center; gap: 5px; font-size: 10px; color: var(--fg-2); }
+.tile-list-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile-list-bar { height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.tile-list-bar i { display: block; height: 100%; background: var(--metric); }
+.tile-list-val { font-family: var(--mono); text-align: right; color: var(--fg-3); }
+
+/* ---------- stats layout editor ---------- */
+.stats-modal { width: min(760px, 94vw); }
+.stats-editor { display: grid; grid-template-columns: 250px 1fr; gap: 22px; }
+.stats-preview-col { display: flex; flex-direction: column; gap: 6px; }
+.stats-preview { padding: 8px; border-radius: 10px; background: var(--bg-1); border: 1px solid var(--line); min-height: 120px; }
+.stats-preview .stat-grid { margin-top: 0; }
+.editor-label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-3); margin-top: 8px; }
+.edit-tile { position: relative; cursor: grab; border-radius: 7px; outline: 2px solid transparent; outline-offset: 1px; transition: outline-color 0.15s, opacity 0.15s; display: flex; }
+.edit-tile > .stat-tile { flex: 1; grid-column: auto !important; }
+.edit-tile.selected { outline-color: var(--accent); }
+.edit-tile.dragging { opacity: 0.4; }
+.edit-tile-x { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%; display: none; align-items: center; justify-content: center; background: var(--bg-3); border: 1px solid var(--line-2); color: var(--fg-2); z-index: 2; }
+.edit-tile:hover .edit-tile-x { display: flex; }
+.edit-tile-x:hover { color: var(--bad); border-color: var(--bad); }
+.metric-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.metric-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border-radius: 14px; font-size: 11px; color: var(--fg-2); background: var(--bg-2); border: 1px solid var(--line-2); }
+.metric-chip:hover { color: var(--fg); border-color: var(--metric); box-shadow: inset 0 0 0 1px var(--metric); }
+.stats-props { display: flex; flex-direction: column; gap: 6px; }
+.stats-props select { padding: 6px 8px; border-radius: 7px; background: var(--bg); border: 1px solid var(--line-2); color: var(--fg); }
+.segmented { display: flex; padding: 2px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line-2); gap: 2px; }
+.segmented button { flex: 1; padding: 5px 8px; border-radius: 6px; font-size: 12px; color: var(--fg-2); }
+.segmented button:hover { color: var(--fg); }
+.segmented button.on { background: var(--bg-3); color: var(--fg); box-shadow: inset 0 0 0 1px var(--line-2); }
+.remove-tile { margin-top: 14px; align-self: flex-start; display: flex; align-items: center; gap: 6px; }
+
+/* ---------- server form: Beszel ---------- */
+.beszel-box { border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; background: var(--bg-1); }
+.beszel-toggle { margin: 0; }
+.beszel-title { color: var(--fg); font-weight: 600; }
+.beszel-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.beszel-connect { display: flex; align-items: center; gap: 8px; }
+.beszel-connect select { flex: 1; }
+.form-grid label.check-row { flex-direction: row; align-items: center; text-align: left; gap: 8px; flex-wrap: wrap; }
+.form-grid label.check-row input { width: auto; }
+.metric-chip.unavailable { opacity: 0.45; }
