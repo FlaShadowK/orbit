@@ -4,6 +4,8 @@ import { useStore } from '@/store'
 import { Icon } from './Icon'
 import { StatusDot } from './StatusDot'
 import { disposeModel } from './EditorView'
+import { keyLabel } from '@shared/keys'
+import { IS_MAC } from '@/lib/util'
 
 export function closeTabWithCleanup(tab: Tab): void {
   const before = useStore.getState().spaces.some((s) => s.tabs.some((t) => t.id === tab.id))
@@ -98,9 +100,9 @@ export function TabBar({ space }: { space: Space }) {
         {space.split ? (
           <button className="icon-btn" title="Close split" onClick={unsplit}><Icon name="x" /></button>
         ) : (
-          <button className="icon-btn" title="Split right (⌘D)" onClick={() => splitWith(undefined, 'row')}><Icon name="split" /></button>
+          <button className="icon-btn" title={`Split right (${keyLabel('splitRow', IS_MAC)})`} onClick={() => splitWith(undefined, 'row')}><Icon name="split" /></button>
         )}
-        <button className={`icon-btn ${showFiles ? 'on' : ''}`} title="Toggle files (⌘B)" onClick={() => set({ showFiles: !showFiles })}>
+        <button className={`icon-btn ${showFiles ? 'on' : ''}`} title={`Toggle files (${keyLabel('toggleFiles', IS_MAC)})`} onClick={() => set({ showFiles: !showFiles })}>
           <Icon name="sidebar" />
         </button>
       </div>

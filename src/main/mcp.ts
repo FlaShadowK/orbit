@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server as HttpServer } from 'http'
-import { randomUUID } from 'crypto'
+import { randomUUID, timingSafeEqual } from 'crypto'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { z } from 'zod'
@@ -176,7 +176,9 @@ function buildServer(ctx: { spaceId?: string }): McpServer {
 }
 
 function authorized(req: IncomingMessage): boolean {
-  return req.headers.authorization === `Bearer ${token}`
+  const got = Buffer.from(req.headers.authorization ?? '')
+  const want = Buffer.from(`Bearer ${token}`)
+  return got.length === want.length && timingSafeEqual(got, want)
 }
 
 async function readBody(req: IncomingMessage): Promise<unknown> {

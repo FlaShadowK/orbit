@@ -13,6 +13,7 @@ import { getActivity, getStatuses, setTabTitle } from './events'
 import { mcpEndpoint } from './mcp'
 import { parseSshConfig } from './sshConfig'
 import { shellEnv, which } from './shellEnv'
+import { isSafeExternalUrl } from './links'
 
 export function registerIpc(): void {
   const h = ipcMain.handle.bind(ipcMain)
@@ -46,7 +47,9 @@ export function registerIpc(): void {
     return r.canceled ? null : r.filePaths[0]
   })
   h('shell:reveal', (_e, p: string) => shell.showItemInFolder(p))
-  h('shell:open', (_e, url: string) => shell.openExternal(url))
+  h('shell:open', (_e, url: string) => {
+    if (isSafeExternalUrl(url)) return shell.openExternal(url)
+  })
 
   // agents & status
   h('agents:list', () => listAgents())

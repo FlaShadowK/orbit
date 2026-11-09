@@ -7,6 +7,7 @@ import { Unicode11Addon } from '@xterm/addon-unicode11'
 import type { Space, Tab } from '@shared/types'
 import { subscribeTerm } from '@/lib/term'
 import { useStore } from '@/store'
+import { isAppShortcut, spaceIndexShortcut, tabIndexShortcut } from '@shared/keys'
 
 const IS_MAC = navigator.platform.toLowerCase().includes('mac')
 
@@ -98,6 +99,58 @@ export function TerminalView({ tab, space, visible, focused }: Props) {
     // The session itself starts right away (xterm buffers output until then).
     let opened = false
     let webgl: WebglAddon | null = null
+    // The WebGL renderer floors the glyph advance to whole device pixels
+    // (JetBrains Mono 13px = 7.8px → 7px on a 1x external monitor), so every cell is
+    // ~10% too narrow and rescaleOverlappingGlyphs squeezes the glyphs. Pad the cell
+    // back to the rounded width via letterSpacing, and redo it whenever the DPR changes
+    // (window moved between Retina and non-Retina screens).
+    let dprQuery: MediaQueryList | null = null
+    const syncCellWidth = (): void => {
+      const dpr = window.devicePixelRatio || 1
+      // macOS has no subpixel AA, so on 1x screens the 400 weight renders thin and
+      // washed out; one step heavier reads like native text there.
+      const weight = dpr < 2 ? 500 : 'normal'
+      if (term.options.fontWeight !== weight) term.options.fontWeight = weight
+      const ctx = document.createElement('canvas').getContext('2d')
+      if (ctx) {
+        ctx.font = `${term.options.fontSize}px ${term.options.fontFamily}`
+        const w = ctx.measureText('W').width * dpr
+        const pad = Math.max(0, Math.round(w) - Math.floor(w))
+        if (term.options.letterSpacing !== pad) term.options.letterSpacing = pad
+      }
+      dprQuery?.removeEventListener('change', onDprChange)
+      dprQuery = window.matchMedia(`(resolution: ${dpr}dppx)`)
+      dprQuery.addEventListener('change', onDprChange)
+    }
+    const loadWebgl = (): void => {
+      webgl?.dispose()
+      webgl = null
+      try {
+        const addon = new WebglAddon()
+        addon.onContextLoss(() => {
+          addon.dispose()
+          if (webgl === addon) webgl = null
+        })
+        term.loadAddon(addon)
+        webgl = addon
+      } catch {
+        webgl = null // DOM renderer fallback
+      }
+    }
+    // xterm's WebGL renderer keeps its own cached DPR and does not reliably resize its
+    // canvas when the window moves between Retina and 1x screens (text ends up at half
+    // or double size). Rebuilding the renderer after the change reads the DPR fresh.
+    let dprTimer: ReturnType<typeof setTimeout> | undefined
+    const onDprChange = (): void => {
+      clearTimeout(dprTimer)
+      dprTimer = setTimeout(() => {
+        if (!opened) return
+        syncCellWidth()
+        loadWebgl()
+        fitNow()
+        term.refresh(0, term.rows - 1)
+      }, 50)
+    }
     const fitNow = (): void => {
       if (!opened || !host.current || host.current.offsetWidth === 0) return
       try {
@@ -110,16 +163,8 @@ export function TerminalView({ tab, space, visible, focused }: Props) {
       if (opened || !host.current || host.current.offsetWidth === 0) return
       opened = true
       term.open(host.current)
-      try {
-        webgl = new WebglAddon()
-        webgl.onContextLoss(() => {
-          webgl?.dispose()
-          webgl = null
-        })
-        term.loadAddon(webgl)
-      } catch {
-        webgl = null // DOM renderer fallback
-      }
+      loadWebgl()
+      syncCellWidth()
       fitNow()
     }
     openRef.current = () => {
@@ -143,11 +188,12 @@ export function TerminalView({ tab, space, visible, focused }: Props) {
           return false
         }
       }
-      // let app-level shortcuts through
-      const mod = e.metaKey || (e.ctrlKey && e.shiftKey)
-      if (mod && ['k', 't', 'w', 'b', 'j', 'd', 's'].includes(e.key.toLowerCase())) return false
-      if (e.metaKey && /^[1-9]$/.test(e.key)) return false
-      if (e.metaKey && e.shiftKey && /^[[\]{}]$/.test(e.key)) return false
+      // let app-level shortcuts through to the menu / app
+      if (isAppShortcut(e, IS_MAC)) return false
+      if (tabIndexShortcut(e, IS_MAC) || spaceIndexShortcut(e, IS_MAC)) return false
+      if (IS_MAC && e.metaKey && e.shiftKey && /^[[\]{}]$/.test(e.key)) return false
+      // Windows/Linux: Ctrl+Shift+C/V/X are copy/paste/cut (Edit menu)
+      if (!IS_MAC && e.ctrlKey && e.shiftKey && ['C', 'V', 'X'].includes(e.key.toUpperCase())) return false
       return true
     })
 
@@ -257,6 +303,8 @@ export function TerminalView({ tab, space, visible, focused }: Props) {
 
     return () => {
       ro.disconnect()
+      dprQuery?.removeEventListener('change', onDprChange)
+      clearTimeout(dprTimer)
       unsub()
       el.removeEventListener('paste', onPaste, true)
       el.removeEventListener('dragover', onDragOver)

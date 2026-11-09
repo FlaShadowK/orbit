@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import type { ActivityEntry, AgentInfo, AgentStatus, OrbitInfo, Server, Space, Tab } from '@shared/types'
 import { basename, SPACE_COLORS, uid } from './lib/util'
+import { keyLabel } from '@shared/keys'
+import { IS_MAC } from './lib/util'
 
 export type ServerModalState = { mode: 'new' } | { mode: 'edit'; server: Server } | null
 
@@ -125,7 +127,7 @@ export const useStore = create<State>((set, get) => {
       const space = spaceId ? get().spaces.find((s) => s.id === spaceId) : activeSpace()
       const target = space ?? activeSpace()
       if (!target) {
-        get().notify('Create a space first (⌘⇧N)', 'error')
+        get().notify(`Create a space first (${keyLabel('newSpace', IS_MAC)})`, 'error')
         return undefined
       }
       const tab: Tab = { id: uid(), title: partial.kind, ...partial }

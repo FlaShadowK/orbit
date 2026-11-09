@@ -12,6 +12,8 @@ import { Palette } from './components/Palette'
 import { ActivityPanel } from './components/ActivityPanel'
 import { SettingsModal } from './components/SettingsModal'
 import { Icon } from './components/Icon'
+import { keyLabel, spaceIndexShortcut, tabIndexShortcut } from '@shared/keys'
+import { IS_MAC } from './lib/util'
 
 const isSession = (t: Tab): boolean => t.kind === 'agent' || t.kind === 'terminal' || t.kind === 'ssh'
 
@@ -98,17 +100,20 @@ function useMainEvents(): void {
     const onKey = (e: KeyboardEvent): void => {
       const s = st()
       const space = selectActiveSpace(s)
-      if (e.metaKey && !e.shiftKey && /^[1-9]$/.test(e.key) && space) {
-        const t = space.tabs[Number(e.key) - 1]
+      const ti = tabIndexShortcut(e, IS_MAC)
+      const si = spaceIndexShortcut(e, IS_MAC)
+      const cycle = IS_MAC ? e.metaKey && e.shiftKey && !e.ctrlKey : e.ctrlKey && !e.shiftKey && e.key === 'Tab'
+      if (ti && space) {
+        const t = space.tabs[ti - 1]
         if (t) s.setActiveTab(t.id)
         e.preventDefault()
-      } else if (e.ctrlKey && !e.metaKey && /^[1-9]$/.test(e.key)) {
-        const sp = s.spaces[Number(e.key) - 1]
+      } else if (si) {
+        const sp = s.spaces[si - 1]
         if (sp) s.setActiveSpace(sp.id)
         e.preventDefault()
-      } else if (e.metaKey && e.shiftKey && (e.key === '[' || e.key === ']' || e.key === '{' || e.key === '}') && space) {
+      } else if (cycle && space && (IS_MAC ? ['[', ']', '{', '}'].includes(e.key) : true)) {
         const i = space.tabs.findIndex((t) => t.id === space.activeTabId)
-        const d = e.key === '[' || e.key === '{' ? -1 : 1
+        const d = IS_MAC ? (e.key === '[' || e.key === '{' ? -1 : 1) : 1
         const t = space.tabs[(i + d + space.tabs.length) % space.tabs.length]
         if (t) s.setActiveTab(t.id)
         e.preventDefault()
@@ -186,7 +191,10 @@ function Welcome({ space }: { space?: Space }) {
           </button>
         )}
       </div>
-      <p className="muted small">⌘T agent · ⌘⇧T terminal · ⌘K commands · ⌘D split · ⌘B files</p>
+      <p className="muted small">
+        {keyLabel('newAgent', IS_MAC)} agent · {keyLabel('newTerminal', IS_MAC)} terminal · {keyLabel('palette', IS_MAC)} commands ·{' '}
+        {keyLabel('splitRow', IS_MAC)} split · {keyLabel('toggleFiles', IS_MAC)} files
+      </p>
     </div>
   )
 }

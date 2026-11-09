@@ -6,8 +6,9 @@ import { homedir } from 'os'
 let cached: NodeJS.ProcessEnv | null = null
 
 export function defaultShell(): string {
-  if (process.platform === 'win32') return process.env.COMSPEC || 'powershell.exe'
-  return process.env.SHELL || '/bin/zsh'
+  if (process.platform === 'win32') return 'powershell.exe'
+  if (process.env.SHELL && existsSync(process.env.SHELL)) return process.env.SHELL
+  return ['/bin/zsh', '/bin/bash', '/usr/bin/bash', '/bin/sh'].find((p) => existsSync(p)) ?? '/bin/sh'
 }
 
 /**
@@ -22,7 +23,7 @@ export function shellEnv(): NodeJS.ProcessEnv {
       const marker = '__ORBIT_ENV__'
       const out = execFileSync(defaultShell(), ['-ilc', `echo ${marker}; env; echo ${marker}`], {
         encoding: 'utf8',
-        timeout: 5000,
+        timeout: 10000,
         env: { ...process.env, ORBIT_RESOLVING_ENV: '1' }
       })
       const body = out.split(marker)[1] ?? ''

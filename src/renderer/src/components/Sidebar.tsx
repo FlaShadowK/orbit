@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { spaceStatus, useStore } from '@/store'
 import { Icon } from './Icon'
 import { StatusDot } from './StatusDot'
+import { keyLabel } from '@shared/keys'
+import { IS_MAC } from '@/lib/util'
 
 export async function createSpaceFromPicker(): Promise<void> {
   const root = await window.orbit.pickFolder()
@@ -25,7 +27,7 @@ export function Sidebar() {
       <div className="section">
         <div className="section-head">
           <span>Spaces</span>
-          <button className="icon-btn" title="New space (⌘⇧N)" onClick={createSpaceFromPicker}>
+          <button className="icon-btn" title={`New space (${keyLabel('newSpace', IS_MAC)})`} onClick={createSpaceFromPicker}>
             <Icon name="plus" />
           </button>
         </div>
@@ -70,7 +72,7 @@ export function Sidebar() {
               )}
               {st && <StatusDot status={st} />}
               {agents > 0 && <span className="pill">{agents}</span>}
-              <span className="kbd-hint">{i < 9 ? `⌃${i + 1}` : ''}</span>
+              <span className="kbd-hint">{i < 9 ? (IS_MAC ? `⌃${i + 1}` : `Ctrl+Alt+${i + 1}`) : ''}</span>
               {menu === s.id && (
                 <div className="ctx-menu" onClick={(e) => e.stopPropagation()} onMouseLeave={() => setMenu(null)}>
                   <button onClick={() => { setRenaming(s.id); setMenu(null) }}>Rename</button>
@@ -131,14 +133,14 @@ export function Sidebar() {
       </div>
 
       <div className="sidebar-foot">
-        <button className="icon-btn" title="Activity log (⌘J)" onClick={() => set({ showActivity: !useStore.getState().showActivity })}>
+        <button className="icon-btn" title={`Activity log (${keyLabel('toggleActivity', IS_MAC)})`} onClick={() => set({ showActivity: !useStore.getState().showActivity })}>
           <Icon name="activity" />
         </button>
         <button className="icon-btn" title="Settings" onClick={() => set({ settingsOpen: true })}>
           <Icon name="settings" />
         </button>
         <button className="foot-palette" onClick={() => set({ paletteOpen: true })}>
-          <Icon name="search" size={12} /> Commands <kbd>⌘K</kbd>
+          <Icon name="search" size={12} /> Commands <kbd>{keyLabel('palette', IS_MAC)}</kbd>
         </button>
       </div>
     </aside>

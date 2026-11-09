@@ -75,15 +75,17 @@ export async function startSession(spec: SessionSpec): Promise<{ replay?: string
   const cwd = spec.cwd && existsSync(spec.cwd) ? spec.cwd : homedir()
   const shell = store.getSettings().shell || defaultShell()
   let file = shell
-  let args: string[] = process.platform === 'win32' ? [] : ['-l']
+  let args: string[] = process.platform === 'win32' ? ['-NoLogo'] : ['-l']
   const isAgent = spec.tabKind === 'agent' && !!spec.agent
   if (isAgent) {
     const launch = agentLaunch(spec.agent!, spec.id, spec.spaceId, spec.agentSessionId, !!spec.resume)
     Object.assign(env, launch.env)
     // run through the login shell so user aliases/PATH apply, and drop back to a shell if the agent exits
     if (process.platform === 'win32') {
-      file = launch.file
-      args = launch.args
+      // PowerShell resolves .cmd/.ps1 shims (npm-installed CLIs) and keeps a shell after exit
+      const pq = (x: string): string => `'${x.replace(/'/g, "''")}'`
+      file = shell
+      args = ['-NoLogo', '-NoExit', '-Command', `& ${[launch.file, ...launch.args].map(pq).join(' ')}`]
     } else {
       const q = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`
       const cmd = [launch.file, ...launch.args].map(q).join(' ')

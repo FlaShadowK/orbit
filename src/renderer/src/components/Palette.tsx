@@ -3,6 +3,8 @@ import { selectActiveSpace, useStore } from '@/store'
 import { createSpaceFromPicker } from './Sidebar'
 import { Icon } from './Icon'
 import { TAB_ICON } from './TabBar'
+import { keyLabel } from '@shared/keys'
+import { IS_MAC } from '@/lib/util'
 
 interface Cmd {
   id: string
@@ -21,8 +23,8 @@ export function Palette() {
   const cmds = useMemo<Cmd[]>(() => {
     const list: Cmd[] = []
     for (const a of state.agents.filter((x) => x.available)) list.push({ id: 'agent-' + a.id, label: `New ${a.label} agent`, icon: 'agent', run: () => state.newAgent(a.id) })
-    list.push({ id: 'term', label: 'New terminal', hint: '⌘⇧T', icon: 'terminal', run: state.newTerminal })
-    list.push({ id: 'space', label: 'New space from folder…', hint: '⌘⇧N', icon: 'folder', run: createSpaceFromPicker })
+    list.push({ id: 'term', label: 'New terminal', hint: keyLabel('newTerminal', IS_MAC), icon: 'terminal', run: state.newTerminal })
+    list.push({ id: 'space', label: 'New space from folder…', hint: keyLabel('newSpace', IS_MAC), icon: 'folder', run: createSpaceFromPicker })
     list.push({ id: 'server', label: 'Add server…', icon: 'server', run: () => state.set({ serverModal: { mode: 'new' } }) })
     list.push({
       id: 'import', label: 'Import servers from ~/.ssh/config', icon: 'server',
@@ -32,9 +34,9 @@ export function Palette() {
         state.notify(n ? `Imported ${n} host(s)` : 'No new hosts found')
       }
     })
-    list.push({ id: 'split', label: 'Split right with new terminal', hint: '⌘D', icon: 'split', run: () => state.splitWith(undefined, 'row') })
-    list.push({ id: 'files', label: 'Toggle file tree', hint: '⌘B', icon: 'sidebar', run: () => state.set({ showFiles: !state.showFiles }) })
-    list.push({ id: 'activity', label: 'Toggle activity log', hint: '⌘J', icon: 'activity', run: () => state.set({ showActivity: !state.showActivity }) })
+    list.push({ id: 'split', label: 'Split right with new terminal', hint: keyLabel('splitRow', IS_MAC), icon: 'split', run: () => state.splitWith(undefined, 'row') })
+    list.push({ id: 'files', label: 'Toggle file tree', hint: keyLabel('toggleFiles', IS_MAC), icon: 'sidebar', run: () => state.set({ showFiles: !state.showFiles }) })
+    list.push({ id: 'activity', label: 'Toggle activity log', hint: keyLabel('toggleActivity', IS_MAC), icon: 'activity', run: () => state.set({ showActivity: !state.showActivity }) })
     list.push({ id: 'settings', label: 'Settings', icon: 'settings', run: () => state.set({ settingsOpen: true }) })
     for (const s of state.servers) {
       list.push({ id: 'ssh-' + s.id, label: `SSH: ${s.name}`, hint: s.host, icon: 'terminal', run: () => state.openSsh(s) })

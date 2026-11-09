@@ -7,6 +7,10 @@ import { killAll } from './sessions'
 import { unwatchAll } from './files'
 import { emit } from './events'
 import { shellEnv } from './shellEnv'
+import { accelerator, type Command } from '@shared/keys'
+import { isSafeExternalUrl } from './links'
+
+const IS_MAC = process.platform === 'darwin'
 
 app.setName('Orbit')
 
@@ -18,7 +22,9 @@ function createWindow(): BrowserWindow {
     minHeight: 560,
     show: false,
     backgroundColor: '#0b0d12',
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    titleBarStyle: IS_MAC ? 'hiddenInset' : 'default',
+    autoHideMenuBar: !IS_MAC,
+    icon: IS_MAC ? undefined : join(__dirname, '../../resources/icon.png'),
     trafficLightPosition: { x: 14, y: 14 },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -28,8 +34,15 @@ function createWindow(): BrowserWindow {
   })
   win.once('ready-to-show', () => win.show())
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
+    if (isSafeExternalUrl(url)) shell.openExternal(url)
     return { action: 'deny' }
+  })
+  // the renderer is a single-page app: never let it navigate away from itself
+  win.webContents.on('will-navigate', (e, url) => {
+    if (url !== win.webContents.getURL()) {
+      e.preventDefault()
+      if (isSafeExternalUrl(url)) shell.openExternal(url)
+    }
   })
   if (process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL)
   else win.loadFile(join(__dirname, '../renderer/index.html'))
@@ -38,29 +51,45 @@ function createWindow(): BrowserWindow {
 
 function buildMenu(): void {
   const send = (cmd: string) => () => BrowserWindow.getFocusedWindow()?.webContents.send('orbit:command', cmd)
+  const item = (label: string, cmd: Command): Electron.MenuItemConstructorOptions => ({ label, accelerator: accelerator(cmd, IS_MAC), click: send(cmd) })
+  // On Windows/Linux, Ctrl+C/V/X/A must stay with the terminal, so the menu uses Ctrl+Shift for clipboard
+  const editMenu: Electron.MenuItemConstructorOptions = IS_MAC
+    ? { role: 'editMenu' }
+    : {
+        label: 'Edit',
+        submenu: [
+          { role: 'undo', accelerator: '' },
+          { role: 'redo', accelerator: '' },
+          { type: 'separator' },
+          { role: 'cut', accelerator: 'Ctrl+Shift+X' },
+          { role: 'copy', accelerator: 'Ctrl+Shift+C' },
+          { role: 'paste', accelerator: 'Ctrl+Shift+V' },
+          { role: 'selectAll', accelerator: '' }
+        ]
+      }
   const template: Electron.MenuItemConstructorOptions[] = [
     ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
     {
       label: 'File',
       submenu: [
-        { label: 'New Space…', accelerator: 'CmdOrCtrl+Shift+N', click: send('newSpace') },
-        { label: 'New Agent Tab', accelerator: 'CmdOrCtrl+T', click: send('newAgent') },
-        { label: 'New Terminal Tab', accelerator: 'CmdOrCtrl+Shift+T', click: send('newTerminal') },
-        { label: 'Save', accelerator: 'CmdOrCtrl+S', click: send('save') },
-        { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: send('closeTab') },
+        item('New Space…', 'newSpace'),
+        item('New Agent Tab', 'newAgent'),
+        item('New Terminal Tab', 'newTerminal'),
+        item('Save', 'save'),
+        item('Close Tab', 'closeTab'),
         { type: 'separator' },
         process.platform === 'darwin' ? { role: 'close' } : { role: 'quit' }
       ]
     },
-    { role: 'editMenu' },
+    editMenu,
     {
       label: 'View',
       submenu: [
-        { label: 'Command Palette', accelerator: 'CmdOrCtrl+K', click: send('palette') },
-        { label: 'Toggle Files', accelerator: 'CmdOrCtrl+B', click: send('toggleFiles') },
-        { label: 'Toggle Activity', accelerator: 'CmdOrCtrl+J', click: send('toggleActivity') },
-        { label: 'Split Right', accelerator: 'CmdOrCtrl+D', click: send('splitRow') },
-        { label: 'Split Down', accelerator: 'CmdOrCtrl+Shift+D', click: send('splitColumn') },
+        item('Command Palette', 'palette'),
+        item('Toggle Files', 'toggleFiles'),
+        item('Toggle Activity', 'toggleActivity'),
+        item('Split Right', 'splitRow'),
+        item('Split Down', 'splitColumn'),
         { type: 'separator' },
         { role: 'reload' },
         { role: 'toggleDevTools' },

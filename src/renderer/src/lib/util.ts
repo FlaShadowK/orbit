@@ -1,3 +1,5 @@
+export const IS_MAC = navigator.platform.toLowerCase().includes('mac')
+
 export const uid = (): string => crypto.randomUUID()
 
 export const basename = (p: string): string => p.split(/[\\/]/).filter(Boolean).pop() ?? p

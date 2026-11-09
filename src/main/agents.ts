@@ -42,7 +42,8 @@ When asked to deploy, prefer reproducible setups (git + docker compose or system
 function hookCommand(tabId: string, state: string): string {
   const { url, token } = mcpEndpoint()
   const nul = process.platform === 'win32' ? 'NUL' : '/dev/null'
-  return `curl -s -m 2 -o ${nul} -X POST -H "Authorization: Bearer ${token}" ${url.replace(/\/mcp$/, '')}/hook/${tabId}/${state}`
+  const curl = process.platform === 'win32' ? 'curl.exe' : 'curl'
+  return `${curl} -s -m 2 -o ${nul} -X POST -H "Authorization: Bearer ${token}" ${url.replace(/\/mcp$/, '')}/hook/${tabId}/${state}`
 }
 
 export interface LaunchSpec {
