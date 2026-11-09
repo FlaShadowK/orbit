@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c2140"/>
+      <stop offset="1" stop-color="#090b12"/>
+    </linearGradient>
+    <radialGradient id="bgGlow" cx="0.5" cy="0.47" r="0.55">
+      <stop offset="0" stop-color="#5b5cff" stop-opacity="0.38"/>
+      <stop offset="0.6" stop-color="#3b2fbf" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.10"/>
+    </linearGradient>
+    <radialGradient id="planet" cx="0.36" cy="0.32" r="0.78">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.12" stop-color="#d4daff"/>
+      <stop offset="0.36" stop-color="#8b9bff"/>
+      <stop offset="0.72" stop-color="#4434d4"/>
+      <stop offset="1" stop-color="#160f4a"/>
+    </radialGradient>
+    <radialGradient id="planetGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.55" stop-color="#8b9bff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#8b9bff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5eead4"/>
+      <stop offset="0.5" stop-color="#9db8ff"/>
+      <stop offset="1" stop-color="#c792ea"/>
+    </linearGradient>
+    <radialGradient id="moon" cx="0.4" cy="0.35" r="0.7">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.4" stop-color="#99f6e4"/>
+      <stop offset="1" stop-color="#14b8a6"/>
+    </radialGradient>
+    <radialGradient id="moonGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.3" stop-color="#5eead4" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#5eead4" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="frontHalf"><rect x="0" y="512" width="1024" height="512"/></clipPath>
+    <clipPath id="backHalf"><rect x="0" y="0" width="1024" height="512"/></clipPath>
+    <clipPath id="tile"><rect x="100" y="100" width="824" height="824" rx="186"/></clipPath>
+  </defs>
+
+  <!-- tile -->
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
+  <g clip-path="url(#tile)">
+    <rect x="100" y="100" width="824" height="824" fill="url(#bgGlow)"/>
+    <!-- faint stars -->
+    <g fill="#ffffff">
+      <circle cx="232" cy="248" r="3.2" opacity="0.55"/>
+      <circle cx="782" cy="214" r="2.6" opacity="0.45"/>
+      <circle cx="818" cy="402" r="2" opacity="0.35"/>
+      <circle cx="206" cy="688" r="2.4" opacity="0.35"/>
+      <circle cx="744" cy="798" r="3" opacity="0.4"/>
+      <circle cx="318" cy="822" r="1.8" opacity="0.3"/>
+      <circle cx="668" cy="172" r="1.8" opacity="0.3"/>
+    </g>
+  </g>
+  <rect x="101.5" y="101.5" width="821" height="821" rx="184.5" fill="none" stroke="url(#edge)" stroke-width="3"/>
+
+  <g transform="rotate(-22 512 512)">
+    <!-- ring, back half (behind planet) -->
+    <ellipse cx="512" cy="512" rx="318" ry="104" fill="none" stroke="url(#ring)" stroke-width="22"/>
+  </g>
+
+  <!-- planet -->
+  <circle cx="512" cy="512" r="250" fill="url(#planetGlow)"/>
+  <circle cx="512" cy="512" r="178" fill="url(#planet)"/>
+  <ellipse cx="452" cy="428" rx="62" ry="36" fill="#ffffff" opacity="0.18" transform="rotate(-30 452 428)"/>
+
+  <g transform="rotate(-22 512 512)">
+    <!-- ring, front half -->
+    <ellipse cx="512" cy="512" rx="318" ry="104" fill="none" stroke="url(#ring)" stroke-width="22" clip-path="url(#frontHalf)"/>
+    <!-- moon on the ring -->
+    <circle cx="742" cy="584" r="62" fill="url(#moonGlow)"/>
+    <circle cx="742" cy="584" r="30" fill="url(#moon)"/>
+  </g>
+</svg>

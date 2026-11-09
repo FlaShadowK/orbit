@@ -1,18 +1,68 @@
 appId: dev.omerovic.orbit
 productName: Orbit
+copyright: Copyright © 2026 Arman Omerovic
 directories:
   buildResources: build
   output: dist
 files:
   - out/**
+  - resources/**
   - package.json
 asarUnpack:
   - node_modules/node-pty/**
+  - resources/**
+# Native modules are prepared per platform: macOS builds node-pty for Electron in
+# postinstall; Windows uses node-pty's bundled N-API prebuilds; Linux is built
+# inside a Linux container (scripts/build-linux.sh).
+npmRebuild: false
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+
 mac:
   category: public.app-category.developer-tools
-  target: [dmg]
+  icon: build/icon.icns
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  extendInfo:
+    NSAppleEventsUsageDescription: Orbit runs your shell and developer tools.
+dmg:
+  title: ${productName} ${version}
+  iconSize: 110
+  window: { width: 560, height: 360 }
+  contents:
+    - { x: 150, y: 180 }
+    - { x: 410, y: 180, type: link, path: /Applications }
+
 win:
-  target: [nsis]
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Orbit
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  artifactName: ${productName}-Setup-${version}-${arch}.${ext}
+
 linux:
-  target: [AppImage, deb]
+  icon: build/icon.png
   category: Development
+  maintainer: Arman Omerovic <oarman93@gmail.com>
+  synopsis: Agentic development & devops workspace
+  description: Agents, terminals, editor and SSH servers in one app.
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+    - target: rpm
+      arch: [x64]
+  desktop:
+    entry:
+      StartupWMClass: Orbit
+  syncDesktopName: true

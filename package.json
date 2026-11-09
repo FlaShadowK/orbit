@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "description": "All-in-one agentic development & devops workspace",
   "main": "./out/main/index.js",
-  "author": "Arman Omerovic",
+  "author": {
+    "name": "Arman Omerovic",
+    "email": "oarman93@gmail.com"
+  },
   "license": "MIT",
   "productName": "Orbit",
   "scripts": {
@@ -12,10 +15,11 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
-    "postinstall": "electron-builder install-app-deps",
-    "build:mac": "npm run build && electron-builder --mac",
-    "build:win": "npm run build && electron-builder --win",
-    "build:linux": "npm run build && electron-builder --linux"
+    "postinstall": "node scripts/fix-node-pty.cjs && electron-builder install-app-deps",
+    "build:mac": "npm run build && electron-builder --mac --publish never",
+    "build:win": "npm run build && electron-builder --win --publish never",
+    "build:linux": "bash scripts/build-linux.sh",
+    "dist": "npm run build:mac && npm run build:win && npm run build:linux"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
@@ -56,5 +60,7 @@
     "electron@45.2.3": true,
     "electron-winstaller@5.4.0": true,
     "cpu-features": false
-  }
+  },
+  "homepage": "https://github.com/FlaShadowK/orbit",
+  "desktopName": "orbit.desktop"
 }

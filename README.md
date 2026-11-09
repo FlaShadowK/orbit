@@ -21,16 +21,53 @@ Build a program, push it and set up its deployment from a single session.
 
 ## Shortcuts
 
-| | |
+| Action | macOS | Windows / Linux |
+|---|---|---|
+| New agent tab | ⌘T | Ctrl+Shift+T |
+| New terminal tab | ⌘⇧T | Ctrl+Shift+E |
+| New space | ⌘⇧N | Ctrl+Shift+N |
+| Command palette | ⌘K | Ctrl+Shift+P |
+| Switch tab | ⌘1..9 | Alt+1..9 |
+| Switch space | ⌃1..9 | Ctrl+Alt+1..9 |
+| Next / previous tab | ⌘⇧] / ⌘⇧[ | Ctrl+Tab |
+| Split right / down | ⌘D / ⌘⇧D | Ctrl+Shift+D / Alt+Shift+D |
+| Toggle files / activity | ⌘B / ⌘J | Ctrl+Shift+B / Ctrl+Shift+J |
+| Save / close tab | ⌘S / ⌘W | Ctrl+S / Ctrl+Shift+W |
+| Copy / paste in terminal | ⌘C / ⌘V | Ctrl+Shift+C / Ctrl+Shift+V |
+
+Windows/Linux use Ctrl+Shift so plain Ctrl+C, Ctrl+D, Ctrl+W, etc. still reach the terminal.
+
+## Installers
+
+| Platform | Files (in `dist/`) |
 |---|---|
-| ⌘T / ⌘⇧T | new agent / terminal tab |
-| ⌘⇧N | new space |
-| ⌘K | command palette |
-| ⌘1..9 / ⌃1..9 | switch tab / space |
-| ⌘⇧[ ⌘⇧] | previous / next tab |
-| ⌘D / ⌘⇧D | split right / down |
-| ⌘B / ⌘J | toggle files / activity |
-| ⌘S / ⌘W | save / close tab |
+| macOS | `Orbit-<v>-mac-arm64.dmg` (Apple Silicon), `Orbit-<v>-mac-x64.dmg` (Intel) |
+| Windows | `Orbit-Setup-<v>-x64.exe`, `Orbit-Setup-<v>-arm64.exe`, `Orbit-Setup-<v>.exe` (picks the architecture automatically) |
+| Linux | `Orbit-<v>-linux-x86_64.AppImage`, `Orbit-<v>-linux-amd64.deb`, `Orbit-<v>-linux-x86_64.rpm` |
+
+```bash
+npm run build:mac     # both DMGs
+npm run build:win     # NSIS installers (cross-builds fine from macOS)
+npm run build:linux   # AppImage/deb/rpm, built inside Docker so node-pty compiles for Linux
+npm run dist          # all of the above
+```
+
+The installers aren't code-signed yet:
+- **macOS:** the app is signed with your Apple Development certificate but not notarized. On another Mac, right-click → Open the first time.
+- **Windows:** SmartScreen will warn. Click "More info → Run anyway".
+
+  Release builds made by GitHub Actions have no signing certificate. If macOS says *"Orbit is damaged"* after a download, run `xattr -dr com.apple.quarantine /Applications/Orbit.app` once.
+
+### Publishing a release
+
+Releases are built by GitHub Actions (`.github/workflows/release.yml`), natively on macOS, Windows and Linux:
+
+```bash
+npm version patch            # bumps package.json (0.1.0 → 0.1.1), commits, and tags v0.1.1
+git push --follow-tags       # pushing the v* tag starts the release build
+```
+
+After ~15 minutes the installers show up under **Releases** on GitHub. To test the build without publishing, run the workflow manually from the **Actions** tab ("Run workflow"). The installers are then attached to the run as artifacts.
 
 ## Development
 
@@ -39,7 +76,6 @@ npm install        # native modules (node-pty) are rebuilt for Electron in posti
 npm run dev        # run with hot reload
 npm run typecheck
 npm test
-npm run build:mac  # → dist/Orbit-<version>.dmg   (build:win, build:linux also available)
 ```
 
 Stack: Electron · React · TypeScript · electron-vite · xterm.js · node-pty · ssh2 · Monaco · MCP TypeScript SDK.
