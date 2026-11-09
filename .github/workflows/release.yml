@@ -16,7 +16,9 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            cmd: npx electron-builder --mac --publish never
+            # no Apple Developer certificate in CI: ad-hoc sign so the bundle stays intact
+            # (unsigned/broken signatures show up as "Orbit is damaged" on Apple Silicon)
+            cmd: npx electron-builder --mac --publish never -c.mac.identity=- -c.mac.hardenedRuntime=false
           - os: windows-latest
             cmd: npx electron-builder --win --publish never
           - os: ubuntu-latest

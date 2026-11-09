@@ -27,11 +27,15 @@ mac:
     NSAppleEventsUsageDescription: Orbit runs your shell and developer tools.
 dmg:
   title: ${productName} ${version}
-  iconSize: 110
-  window: { width: 560, height: 360 }
+  icon: build/icon.icns            # volume icon when mounted
+  background: build/background.tiff  # 1x+2x, rendered by scripts/render-dmg-background.sh
+  format: ULFO                     # lzfse: smaller, fast to open (macOS 10.11+)
+  iconSize: 112
+  iconTextSize: 13
+  window: { width: 660, height: 400 }
   contents:
-    - { x: 150, y: 180 }
-    - { x: 410, y: 180, type: link, path: /Applications }
+    - { x: 170, y: 200 }
+    - { x: 490, y: 200, type: link, path: /Applications }
 
 win:
   icon: build/icon.ico

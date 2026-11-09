@@ -56,7 +56,7 @@ The installers aren't code-signed yet:
 - **macOS:** the app is signed with your Apple Development certificate but not notarized. On another Mac, right-click → Open the first time.
 - **Windows:** SmartScreen will warn. Click "More info → Run anyway".
 
-  Release builds made by GitHub Actions have no signing certificate. If macOS says *"Orbit is damaged"* after a download, run `xattr -dr com.apple.quarantine /Applications/Orbit.app` once.
+  Release builds made by GitHub Actions are ad-hoc signed (no Apple Developer account). The first time you open a downloaded copy, macOS says it *"could not verify"* Orbit: open **System Settings → Privacy & Security** and click **Open Anyway**. Or run `xattr -dr com.apple.quarantine /Applications/Orbit.app` once.
 
 ### Publishing a release
 
