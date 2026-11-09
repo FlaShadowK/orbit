@@ -1,6 +1,6 @@
 import type {
   ActivityEntry, AgentInfo, AgentStatus, DirEntry, MainEvent, OrbitInfo, Server, ServerInput,
-  SessionSpec, Settings, Space
+  SessionSpec, Settings, Space, UpdateState
 } from '../shared/types'
 
 export interface OrbitApi {
@@ -43,6 +43,15 @@ export interface OrbitApi {
   sftpList(serverId: string, path: string): Promise<DirEntry[]>
   sftpRead(serverId: string, path: string): Promise<string>
   sftpWrite(serverId: string, path: string, content: string): Promise<void>
+
+  /** open a tab in its own window (optionally where it was dropped, in screen coordinates) */
+  detachTab(req: { tabId: string; spaceId: string; title: string; at?: { x: number; y: number } }): Promise<void>
+  closeDetached(tabId: string): Promise<void>
+  focusDetached(tabId: string): Promise<void>
+
+  updateState(): Promise<UpdateState>
+  checkForUpdates(): Promise<void>
+  installUpdate(): Promise<void>
 
   getActivity(): Promise<ActivityEntry[]>
   registerMcpGlobal(): Promise<string>

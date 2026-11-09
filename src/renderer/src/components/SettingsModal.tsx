@@ -24,7 +24,7 @@ export function SettingsModal() {
       const i = line.indexOf('=')
       if (i > 0) agentCommands[line.slice(0, i).trim()] = line.slice(i + 1).trim()
     }
-    await window.orbit.setSettings({ shell: settings.shell || undefined, agentCommands })
+    await window.orbit.setSettings({ shell: settings.shell || undefined, agentCommands, autoUpdate: settings.autoUpdate !== false })
     set({ agents: await window.orbit.listAgents() })
     close()
   }
@@ -52,6 +52,19 @@ export function SettingsModal() {
             {agents.map((a) => (
               <span key={a.id} className={`pill ${a.available ? 'ok' : ''}`}>{a.label}</span>
             ))}
+          </div>
+          <div className="span2 mcp-box">
+            <div className="mcp-title">Updates</div>
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={settings.autoUpdate !== false}
+                onChange={(e) => setSettings({ ...settings, autoUpdate: e.target.checked })}
+              />
+              Check GitHub for new releases and download them automatically
+            </label>
+            <p className="muted">You're on Orbit {info?.version}. Updates install when you restart Orbit.</p>
+            <button className="btn" onClick={() => window.orbit.checkForUpdates()}>Check now</button>
           </div>
           <div className="span2 mcp-box">
             <div className="mcp-title">Orbit MCP server</div>

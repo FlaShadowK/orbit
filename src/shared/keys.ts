@@ -5,6 +5,7 @@
 export type Command =
   | 'newSpace' | 'newAgent' | 'newTerminal' | 'save' | 'closeTab'
   | 'palette' | 'toggleFiles' | 'toggleActivity' | 'splitRow' | 'splitColumn'
+  | 'closePane' | 'detachTab'
 
 interface Binding {
   mac: string
@@ -21,7 +22,9 @@ export const BINDINGS: Record<Command, Binding> = {
   toggleFiles: { mac: 'Cmd+B', other: 'Ctrl+Shift+B' },
   toggleActivity: { mac: 'Cmd+J', other: 'Ctrl+Shift+J' },
   splitRow: { mac: 'Cmd+D', other: 'Ctrl+Shift+D' },
-  splitColumn: { mac: 'Cmd+Shift+D', other: 'Alt+Shift+D' }
+  splitColumn: { mac: 'Cmd+Shift+D', other: 'Alt+Shift+D' },
+  closePane: { mac: 'Cmd+Shift+W', other: 'Ctrl+Alt+W' },
+  detachTab: { mac: 'Cmd+Shift+M', other: 'Ctrl+Shift+M' }
 }
 
 export function accelerator(cmd: Command, isMac: boolean): string {

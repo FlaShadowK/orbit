@@ -5,7 +5,16 @@ import { Icon } from './Icon'
 import { StatusDot } from './StatusDot'
 import { disposeModel } from './EditorView'
 import { keyLabel } from '@shared/keys'
+import { hasTab, leafCount, type DropSide } from '@shared/layout'
 import { IS_MAC } from '@/lib/util'
+import { TAB_MIME } from './Workspace'
+
+/** True when a drag ended outside this window's bounds (screen coordinates). */
+function outsideWindow(e: React.DragEvent): boolean {
+  const { screenX: x, screenY: y } = e
+  if (x === 0 && y === 0) return false // some platforms report 0,0 for cancelled drags
+  return x < window.screenX || y < window.screenY || x > window.screenX + window.outerWidth || y > window.screenY + window.outerHeight
+}
 
 export function closeTabWithCleanup(tab: Tab): void {
   const before = useStore.getState().spaces.some((s) => s.tabs.some((t) => t.id === tab.id))
@@ -23,34 +32,58 @@ export const TAB_ICON: Record<Tab['kind'], string> = {
 }
 
 export function TabBar({ space }: { space: Space }) {
-  const { statuses, dirty, setActiveTab, updateTab, moveTab, splitWith, unsplit, showFiles, set } = useStore()
+  const { statuses, dirty, detached, setActiveTab, updateTab, moveTab, splitWith, closePane, showFiles, set } = useStore()
   const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null)
+  const [tabMenu, setTabMenu] = useState<{ tab: Tab; x: number; y: number } | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
-  const [dragId, setDragId] = useState<string | null>(null)
+  const [dropIndex, setDropIndex] = useState<number | null>(null)
+  const multi = leafCount(space.layout) > 1
 
   return (
     <div className="tabbar drag">
       <div className="tabs no-drag">
         {space.tabs.map((t, i) => {
           const active = t.id === space.activeTabId
-          const inSplit = t.id === space.split?.tabId
+          const shown = !active && hasTab(space.layout, t.id)
+          const isDetached = !!detached[t.id]
           return (
             <div
               key={t.id}
-              className={`tab ${active ? 'active' : ''} ${inSplit ? 'split' : ''} kind-${t.kind}`}
+              className={`tab ${active ? 'active' : ''} ${shown ? 'shown' : ''} ${isDetached ? 'detached' : ''} ${dropIndex === i ? 'drop-before' : ''} kind-${t.kind}`}
               onMouseDown={(e) => e.button === 1 && closeTabWithCleanup(t)}
               onClick={() => setActiveTab(t.id)}
               onDoubleClick={() => setRenaming(t.id)}
-              draggable
-              onDragStart={() => setDragId(t.id)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => {
-                if (dragId && dragId !== t.id) moveTab(dragId, i)
-                setDragId(null)
+              onContextMenu={(e) => {
+                e.preventDefault()
+                setTabMenu({ tab: t, x: e.clientX, y: e.clientY })
               }}
-              title={t.filePath ?? t.title}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData(TAB_MIME, t.id)
+                e.dataTransfer.effectAllowed = 'move'
+                // changing the DOM synchronously in dragstart can cancel the drag in Chromium
+                setTimeout(() => set({ draggingTabId: t.id }), 0)
+              }}
+              onDragEnd={(e) => {
+                setDropIndex(null)
+                set({ draggingTabId: undefined })
+                if (e.dataTransfer.dropEffect === 'none' && outsideWindow(e))
+                  useStore.getState().detachTab(t.id, { x: e.screenX, y: e.screenY })
+              }}
+              onDragOver={(e) => {
+                if (!e.dataTransfer.types.includes(TAB_MIME)) return
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+                if (dropIndex !== i) setDropIndex(i)
+              }}
+              onDrop={(e) => {
+                const id = e.dataTransfer.getData(TAB_MIME)
+                setDropIndex(null)
+                if (id && id !== t.id) moveTab(id, i)
+              }}
+              title={isDetached ? `${t.title} (in its own window)` : (t.filePath ?? t.title)}
             >
-              <span className="tab-icon"><Icon name={TAB_ICON[t.kind]} size={13} /></span>
+              <span className="tab-icon"><Icon name={isDetached ? 'window' : TAB_ICON[t.kind]} size={13} /></span>
               {renaming === t.id ? (
                 <input
                   autoFocus
@@ -97,16 +130,81 @@ export function TabBar({ space }: { space: Space }) {
         </div>
       </div>
       <div className="tabbar-actions no-drag">
-        {space.split ? (
-          <button className="icon-btn" title="Close split" onClick={unsplit}><Icon name="x" /></button>
-        ) : (
-          <button className="icon-btn" title={`Split right (${keyLabel('splitRow', IS_MAC)})`} onClick={() => splitWith(undefined, 'row')}><Icon name="split" /></button>
+        {multi && space.activeTabId && (
+          <button className="icon-btn" title={`Close pane (${keyLabel('closePane', IS_MAC)})`} onClick={() => closePane(space.activeTabId!)}>
+            <Icon name="x" />
+          </button>
         )}
+        <button className="icon-btn" title={`Split right (${keyLabel('splitRow', IS_MAC)})`} onClick={() => splitWith(undefined, 'right')}>
+          <Icon name="split" />
+        </button>
+        <button className="icon-btn" title={`Split down (${keyLabel('splitColumn', IS_MAC)})`} onClick={() => splitWith(undefined, 'bottom')}>
+          <Icon name="split-down" />
+        </button>
         <button className={`icon-btn ${showFiles ? 'on' : ''}`} title={`Toggle files (${keyLabel('toggleFiles', IS_MAC)})`} onClick={() => set({ showFiles: !showFiles })}>
           <Icon name="sidebar" />
         </button>
       </div>
+      {tabMenu && <TabMenu space={space} {...tabMenu} onClose={() => setTabMenu(null)} onRename={() => setRenaming(tabMenu.tab.id)} />}
     </div>
+  )
+}
+
+const SPLITS: { side: Exclude<DropSide, 'center'>; label: string; icon: string }[] = [
+  { side: 'right', label: 'Split Right', icon: 'split' },
+  { side: 'left', label: 'Split Left', icon: 'split-left' },
+  { side: 'bottom', label: 'Split Down', icon: 'split-down' },
+  { side: 'top', label: 'Split Up', icon: 'split-up' }
+]
+
+/** Right-click menu on a tab. */
+function TabMenu({ space, tab, x, y, onClose, onRename }: { space: Space; tab: Tab; x: number; y: number; onClose: () => void; onRename: () => void }) {
+  const { detached, splitWith, placeTab, closePane, detachTab } = useStore()
+  const isDetached = !!detached[tab.id]
+  const target = space.activeTabId
+  const multi = leafCount(space.layout) > 1
+  const run = (fn: () => void) => () => {
+    fn()
+    onClose()
+  }
+  return (
+    <>
+      <div className="menu-backdrop no-drag" onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose() }} />
+      <div className="dropdown no-drag" style={{ left: Math.min(x, window.innerWidth - 230), top: y }}>
+        {SPLITS.map((s) => (
+          <button
+            key={s.side}
+            // splitting the focused tab next to itself makes no sense: open a new terminal there instead
+            onClick={run(() => (tab.id === target && !isDetached ? splitWith(undefined, s.side) : placeTab(tab.id, target, s.side)))}
+          >
+            <Icon name={s.icon} /> {s.label}
+            {tab.id === target && !isDetached && <span className="muted"> · new terminal</span>}
+          </button>
+        ))}
+        <div className="dropdown-sep" />
+        {isDetached ? (
+          <button onClick={run(() => placeTab(tab.id, target, 'center'))}>
+            <Icon name="dock" /> Move Back to Main Window
+          </button>
+        ) : (
+          <button onClick={run(() => detachTab(tab.id))}>
+            <Icon name="window" /> Move to New Window <kbd>{keyLabel('detachTab', IS_MAC)}</kbd>
+          </button>
+        )}
+        {multi && hasTab(space.layout, tab.id) && (
+          <button onClick={run(() => closePane(tab.id))}>
+            <Icon name="x" /> Close Pane
+          </button>
+        )}
+        <div className="dropdown-sep" />
+        <button onClick={run(onRename)}>
+          <Icon name="edit" /> Rename
+        </button>
+        <button className="danger" onClick={run(() => closeTabWithCleanup(tab))}>
+          <Icon name="trash" /> Close Tab
+        </button>
+      </div>
+    </>
   )
 }
 

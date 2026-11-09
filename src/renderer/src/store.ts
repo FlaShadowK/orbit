@@ -1,8 +1,8 @@
 import { create } from 'zustand'
-import type { ActivityEntry, AgentInfo, AgentStatus, OrbitInfo, Server, Space, Tab } from '@shared/types'
-import { basename, SPACE_COLORS, uid } from './lib/util'
+import type { ActivityEntry, AgentInfo, AgentStatus, OrbitInfo, Server, Space, Tab, UpdateState } from '@shared/types'
+import { basename, IS_MAC, SPACE_COLORS, uid } from './lib/util'
 import { keyLabel } from '@shared/keys'
-import { IS_MAC } from './lib/util'
+import { hasTab, leaf, leafCount, placeTab as placeInLayout, prune, removeTab, replaceTab, setRatio, tabsIn, type DropSide } from '@shared/layout'
 
 export type ServerModalState = { mode: 'new' } | { mode: 'edit'; server: Server } | null
 
@@ -23,19 +23,31 @@ interface State {
   serverModal: ServerModalState
   settingsOpen: boolean
   toast?: { text: string; kind: 'info' | 'error' }
+  /** tabs currently shown in their own window */
+  detached: Record<string, boolean>
+  /** tab being dragged from the tab bar (drives the drop-zone overlay) */
+  draggingTabId?: string
+  update: UpdateState
 
   init(): Promise<void>
   addSpace(root: string, name?: string): Space
   removeSpace(id: string): void
   updateSpace(id: string, patch: Partial<Space>): void
   setActiveSpace(id: string): void
-  addTab(tab: Partial<Tab> & Pick<Tab, 'kind'>, spaceId?: string, opts?: { split?: 'row' | 'column'; background?: boolean }): Tab | undefined
+  addTab(tab: Partial<Tab> & Pick<Tab, 'kind'>, spaceId?: string, opts?: { side?: DropSide; background?: boolean }): Tab | undefined
   closeTab(tabId: string): void
   setActiveTab(tabId: string): void
   updateTab(tabId: string, patch: Partial<Tab>): void
   moveTab(tabId: string, toIndex: number): void
-  splitWith(tabId: string | undefined, direction: 'row' | 'column'): void
-  unsplit(): void
+  /** split the focused pane: show `tabId` (or a new terminal) on `side` of it */
+  splitWith(tabId: string | undefined, side: Exclude<DropSide, 'center'>): void
+  /** drag & drop: show `tabId` on `side` of the pane showing `targetTabId` */
+  placeTab(tabId: string, targetTabId: string | undefined, side: DropSide): void
+  /** hide a pane (the tab stays open in the tab bar) */
+  closePane(tabId: string): void
+  resizeSplit(spaceId: string, splitId: string, ratio: number): void
+  detachTab(tabId: string, at?: { x: number; y: number }): void
+  dockTab(tabId: string): void
   openFile(path: string, serverId?: string): void
   newAgent(agentId?: string): void
   newTerminal(): void
@@ -47,7 +59,13 @@ interface State {
 }
 
 let persistTimer: number | undefined
+/** detached windows render a single tab and must never overwrite the saved spaces */
+let persistEnabled = true
+export function disablePersistence(): void {
+  persistEnabled = false
+}
 function persist(get: () => State): void {
+  if (!persistEnabled) return
   window.clearTimeout(persistTimer)
   persistTimer = window.setTimeout(() => {
     const { spaces, activeSpaceId } = get()
@@ -59,6 +77,44 @@ const findSpaceOfTab = (spaces: Space[], tabId: string): Space | undefined =>
   spaces.find((s) => s.tabs.some((t) => t.id === tabId))
 
 const isSessionTab = (t: Tab): boolean => t.kind === 'agent' || t.kind === 'terminal' || t.kind === 'ssh'
+
+/** Bring a saved space up to date: migrate the old single split and drop stale panes. */
+export function normalizeSpace(s: Space): Space {
+  const ids = new Set(s.tabs.map((t) => t.id))
+  let layout = prune(s.layout, ids)
+  const active = s.activeTabId && ids.has(s.activeTabId) ? s.activeTabId : s.tabs[0]?.id
+  if (!layout && active) {
+    layout = leaf(active)
+    if (s.split && ids.has(s.split.tabId) && s.split.tabId !== active)
+      layout = placeInLayout(layout, s.split.tabId, active, s.split.direction === 'row' ? 'right' : 'bottom')
+  }
+  const activeTabId = active && hasTab(layout, active) ? active : tabsIn(layout)[0]
+  return { ...s, layout, activeTabId, split: undefined }
+}
+
+/** Show `tabId` in the focused pane of `s` (or focus it if it's already visible). */
+function showTab(s: Space, tabId: string): Space {
+  if (hasTab(s.layout, tabId)) return { ...s, activeTabId: tabId }
+  if (s.layout && s.activeTabId && hasTab(s.layout, s.activeTabId))
+    return { ...s, layout: replaceTab(s.layout, s.activeTabId, tabId), activeTabId: tabId }
+  return { ...s, layout: s.layout ? placeInLayout(s.layout, tabId, tabsIn(s.layout)[0], 'center') : leaf(tabId), activeTabId: tabId }
+}
+
+/** Remove `tabId` from the panes; a lone pane switches to a neighbouring tab instead. */
+function hideTab(s: Space, tabId: string, tabs: Tab[], detached: Record<string, boolean>): Space {
+  if (!hasTab(s.layout, tabId)) return s
+  const visible = new Set(tabsIn(s.layout))
+  if (leafCount(s.layout) > 1) {
+    const layout = removeTab(s.layout, tabId)
+    const activeTabId = s.activeTabId === tabId || !hasTab(layout, s.activeTabId ?? '') ? tabsIn(layout)[0] : s.activeTabId
+    return { ...s, layout, activeTabId }
+  }
+  const idx = s.tabs.findIndex((t) => t.id === tabId)
+  const order = [...tabs.slice(idx), ...tabs.slice(0, idx).reverse()]
+  const next = order.find((t) => t.id !== tabId && !visible.has(t.id) && !detached[t.id])
+  if (next) return { ...s, layout: replaceTab(s.layout, tabId, next.id), activeTabId: next.id }
+  return { ...s, layout: undefined, activeTabId: undefined }
+}
 
 export const useStore = create<State>((set, get) => {
   const mutateSpaces = (fn: (spaces: Space[]) => Space[], extra: Partial<State> = {}): void => {
@@ -80,8 +136,12 @@ export const useStore = create<State>((set, get) => {
     paletteOpen: false,
     serverModal: null,
     settingsOpen: false,
+    detached: {},
+    update: { status: 'idle' },
 
     async init() {
+      // optional: a renderer hot-reloaded onto an older main process doesn't have it yet
+      window.orbit.updateState?.().then((update) => set({ update }), () => {})
       const [info, { spaces, activeSpaceId }, servers, agents, statuses, activity] = await Promise.all([
         window.orbit.info(),
         window.orbit.getSpaces(),
@@ -90,7 +150,7 @@ export const useStore = create<State>((set, get) => {
         window.orbit.getStatuses(),
         window.orbit.getActivity()
       ])
-      set({ info, spaces, activeSpaceId: activeSpaceId ?? spaces[0]?.id, servers, agents, statuses, activity, ready: true })
+      set({ info, spaces: spaces.map(normalizeSpace), activeSpaceId: activeSpaceId ?? spaces[0]?.id, servers, agents, statuses, activity, ready: true })
       for (const s of spaces) window.orbit.fsWatch(s.root)
     },
 
@@ -131,17 +191,16 @@ export const useStore = create<State>((set, get) => {
         return undefined
       }
       const tab: Tab = { id: uid(), title: partial.kind, ...partial }
-      mutateSpaces((spaces) =>
-        spaces.map((s) => {
-          if (s.id !== target.id) return s
-          const next: Space = { ...s, tabs: [...s.tabs, tab] }
-          if (opts?.split) next.split = { tabId: tab.id, direction: opts.split }
-          else if (!opts?.background) {
-            next.activeTabId = tab.id
-            if (s.split?.tabId === s.activeTabId) next.split = undefined
-          }
-          return next
-        }),
+      mutateSpaces(
+        (spaces) =>
+          spaces.map((s) => {
+            if (s.id !== target.id) return s
+            const next: Space = { ...s, tabs: [...s.tabs, tab] }
+            if (opts?.side && opts.side !== 'center' && s.layout)
+              return { ...next, layout: placeInLayout(s.layout, tab.id, s.activeTabId, opts.side), activeTabId: tab.id }
+            if (opts?.background && s.layout) return next
+            return showTab(next, tab.id)
+          }),
         opts?.background ? {} : { activeSpaceId: target.id }
       )
       window.orbit.setTabTitle(tab.id, `${target.name} · ${tab.title}`)
@@ -154,35 +213,26 @@ export const useStore = create<State>((set, get) => {
       const tab = space.tabs.find((t) => t.id === tabId)!
       if (tab.kind === 'editor' && get().dirty[tabId] && !confirm(`Discard unsaved changes to ${tab.title}?`)) return
       if (isSessionTab(tab)) window.orbit.termKill(tabId)
-      const idx = space.tabs.findIndex((t) => t.id === tabId)
+      if (get().detached[tabId]) window.orbit.closeDetached(tabId)
       const tabs = space.tabs.filter((t) => t.id !== tabId)
-      let activeTabId = space.activeTabId
-      let split = space.split
-      if (split?.tabId === tabId) split = undefined
-      if (activeTabId === tabId) {
-        if (split) {
-          activeTabId = split.tabId
-          split = undefined
-        } else activeTabId = (tabs[idx] ?? tabs[idx - 1])?.id
-      }
       const dirty = { ...get().dirty }
       delete dirty[tabId]
-      mutateSpaces((spaces) => spaces.map((s) => (s.id === space.id ? { ...s, tabs, activeTabId, split } : s)), { dirty })
+      const detached = { ...get().detached }
+      delete detached[tabId]
+      mutateSpaces(
+        (spaces) => spaces.map((s) => (s.id === space.id ? { ...hideTab(s, tabId, space.tabs, detached), tabs } : s)),
+        { dirty, detached }
+      )
     },
 
     setActiveTab(tabId) {
       const space = findSpaceOfTab(get().spaces, tabId)
       if (!space) return
-      mutateSpaces(
-        (spaces) =>
-          spaces.map((s) => {
-            if (s.id !== space.id) return s
-            // clicking the split tab keeps the split; clicking another replaces the primary pane
-            if (s.split?.tabId === tabId) return s
-            return { ...s, activeTabId: tabId }
-          }),
-        { activeSpaceId: space.id }
-      )
+      if (get().detached[tabId]) {
+        window.orbit.focusDetached(tabId)
+        return
+      }
+      mutateSpaces((spaces) => spaces.map((s) => (s.id === space.id ? showTab(s, tabId) : s)), { activeSpaceId: space.id })
       window.dispatchEvent(new CustomEvent('orbit:focus', { detail: tabId }))
     },
 
@@ -205,21 +255,74 @@ export const useStore = create<State>((set, get) => {
       )
     },
 
-    splitWith(tabId, direction) {
+    splitWith(tabId, side) {
       const space = activeSpace()
       if (!space) return
       if (!tabId) {
-        // split with a fresh terminal
-        get().addTab({ kind: 'terminal', title: 'Terminal' }, space.id, { split: direction })
+        get().addTab({ kind: 'terminal', title: 'Terminal' }, space.id, { side })
         return
       }
-      if (tabId === space.activeTabId) return
-      get().updateSpace(space.id, { split: { tabId, direction } })
+      get().placeTab(tabId, space.activeTabId, side)
     },
 
-    unsplit() {
-      const space = activeSpace()
-      if (space) get().updateSpace(space.id, { split: undefined })
+    placeTab(tabId, targetTabId, side) {
+      const space = findSpaceOfTab(get().spaces, tabId)
+      if (!space) return
+      const detached = { ...get().detached }
+      if (detached[tabId]) {
+        delete detached[tabId]
+        window.orbit.closeDetached(tabId)
+      }
+      mutateSpaces(
+        (spaces) =>
+          spaces.map((s) => {
+            if (s.id !== space.id) return s
+            const target = targetTabId && hasTab(s.layout, targetTabId) ? targetTabId : s.activeTabId
+            return { ...s, layout: placeInLayout(s.layout, tabId, target, side), activeTabId: tabId }
+          }),
+        { detached, activeSpaceId: space.id }
+      )
+      window.dispatchEvent(new CustomEvent('orbit:focus', { detail: tabId }))
+    },
+
+    closePane(tabId) {
+      const space = findSpaceOfTab(get().spaces, tabId)
+      if (!space || leafCount(space.layout) < 2) return
+      mutateSpaces((spaces) => spaces.map((s) => (s.id === space.id ? hideTab(s, tabId, s.tabs, get().detached) : s)))
+    },
+
+    resizeSplit(spaceId, splitId, ratio) {
+      mutateSpaces((spaces) => spaces.map((s) => (s.id === spaceId && s.layout ? { ...s, layout: setRatio(s.layout, splitId, ratio) } : s)))
+    },
+
+    detachTab(tabId, at) {
+      const space = findSpaceOfTab(get().spaces, tabId)
+      const tab = space?.tabs.find((t) => t.id === tabId)
+      if (!space || !tab || get().detached[tabId]) return
+      if (get().dirty[tabId]) {
+        get().notify(`Save ${tab.title} before moving it to a window`, 'error')
+        return
+      }
+      const detached = { ...get().detached, [tabId]: true }
+      // hide it here first so this window lets go of the session before the new one attaches
+      mutateSpaces((spaces) => spaces.map((s) => (s.id === space.id ? hideTab(s, tabId, s.tabs, detached) : s)), { detached })
+      window.orbit.detachTab({ tabId, spaceId: space.id, title: tab.title, at })
+    },
+
+    dockTab(tabId) {
+      const detached = { ...get().detached }
+      delete detached[tabId]
+      set({ detached })
+      const space = findSpaceOfTab(get().spaces, tabId)
+      if (!space) return
+      // come back next to what the user is looking at instead of replacing it
+      mutateSpaces(
+        (spaces) =>
+          spaces.map((s) =>
+            s.id !== space.id ? s : s.layout ? { ...s, layout: placeInLayout(s.layout, tabId, s.activeTabId, 'right'), activeTabId: tabId } : showTab(s, tabId)
+          ),
+        { activeSpaceId: space.id }
+      )
     },
 
     openFile(path, serverId) {

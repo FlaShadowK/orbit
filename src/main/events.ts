@@ -1,5 +1,6 @@
 import { BrowserWindow, Notification } from 'electron'
 import type { ActivityEntry, AgentStatus, MainEvent } from '@shared/types'
+import { showMain } from './windows'
 
 export function emit(ev: MainEvent): void {
   for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('orbit:event', ev)
@@ -29,9 +30,7 @@ export function setStatus(tabId: string, status: AgentStatus): void {
       body: status === 'waiting' ? 'Needs your input' : 'Finished'
     })
     n.on('click', () => {
-      const w = BrowserWindow.getAllWindows()[0]
-      w?.show()
-      w?.focus()
+      showMain()
       emit({ type: 'status', tabId, status })
       send('orbit:focusTab', tabId)
     })

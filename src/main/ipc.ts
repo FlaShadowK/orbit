@@ -14,6 +14,8 @@ import { mcpEndpoint } from './mcp'
 import { parseSshConfig } from './sshConfig'
 import { shellEnv, which } from './shellEnv'
 import { isSafeExternalUrl } from './links'
+import { closeDetached, detachTab, focusDetached, mainWindow, type DetachRequest } from './windows'
+import { checkForUpdates, installUpdate, rescheduleUpdates, updateState } from './updater'
 
 export function registerIpc(): void {
   const h = ipcMain.handle.bind(ipcMain)
@@ -30,12 +32,18 @@ export function registerIpc(): void {
 
   // spaces / settings
   h('spaces:get', () => store.getSpaces())
-  h('spaces:set', (_e, spaces: Space[], activeSpaceId?: string) => {
+  h('spaces:set', (e, spaces: Space[], activeSpaceId?: string) => {
+    // only the main window owns the layout; detached windows hold a read-only copy
+    if (e.sender !== mainWindow()?.webContents) return
     store.setSpaces(spaces, activeSpaceId)
     for (const s of spaces) if (existsSync(s.root)) watchRoot(s.root)
   })
   h('settings:get', () => store.getSettings())
-  h('settings:set', (_e, patch: Partial<Settings>) => store.setSettings(patch))
+  h('settings:set', (_e, patch: Partial<Settings>) => {
+    const next = store.setSettings(patch)
+    if ('autoUpdate' in patch) rescheduleUpdates()
+    return next
+  })
   h('dialog:folder', async () => {
     const win = BrowserWindow.getFocusedWindow()
     const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory', 'createDirectory'] })
@@ -123,6 +131,16 @@ export function registerIpc(): void {
   h('sftp:list', (_e, id: string, p: string) => ssh.sftpList(id, p))
   h('sftp:read', (_e, id: string, p: string) => ssh.sftpRead(id, p))
   h('sftp:write', (_e, id: string, p: string, c: string) => ssh.sftpWrite(id, p, c))
+
+  // windows
+  h('window:detach', (_e, req: DetachRequest) => detachTab(req))
+  h('window:closeDetached', (_e, tabId: string) => closeDetached(tabId))
+  h('window:focusDetached', (_e, tabId: string) => focusDetached(tabId))
+
+  // updates
+  h('updates:state', () => updateState())
+  h('updates:check', () => checkForUpdates(true))
+  h('updates:install', () => installUpdate())
 
   // activity / mcp
   h('activity:get', () => getActivity())

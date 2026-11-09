@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import type { Space, Tab } from '@shared/types'
 import { selectActiveSpace, useStore } from './store'
 import { Sidebar, createSpaceFromPicker } from './components/Sidebar'
 import { TabBar, closeTabWithCleanup } from './components/TabBar'
-import { TerminalView } from './components/TerminalView'
-import { EditorView, reloadIfClean, saveTab } from './components/EditorView'
-import { SftpView } from './components/SftpView'
+import { reloadIfClean, saveTab } from './components/EditorView'
+import { Workspace } from './components/Workspace'
+import { DetachedApp, detachedTarget } from './components/DetachedApp'
 import { FileTree } from './components/FileTree'
 import { ServerModal } from './components/ServerModal'
 import { Palette } from './components/Palette'
@@ -15,17 +15,8 @@ import { Icon } from './components/Icon'
 import { keyLabel, spaceIndexShortcut, tabIndexShortcut } from '@shared/keys'
 import { IS_MAC } from './lib/util'
 
-const isSession = (t: Tab): boolean => t.kind === 'agent' || t.kind === 'terminal' || t.kind === 'ssh'
-
-let focusedTabId: string | undefined
-
 function currentEditorTab(space?: Space): Tab | undefined {
-  if (!space) return
-  const ids = [focusedTabId, space.activeTabId, space.split?.tabId]
-  for (const id of ids) {
-    const t = space.tabs.find((x) => x.id === id && x.kind === 'editor')
-    if (t) return t
-  }
+  return space?.tabs.find((t) => t.id === space.activeTabId && t.kind === 'editor')
 }
 
 function useMainEvents(): void {
@@ -50,6 +41,12 @@ function useMainEvents(): void {
           break
         case 'servers':
           st().set({ servers: e.servers })
+          break
+        case 'detached':
+          if (!e.detached && st().detached[e.tabId]) st().dockTab(e.tabId)
+          break
+        case 'update':
+          st().set({ update: e.state })
           break
       }
     })
@@ -77,12 +74,25 @@ function useMainEvents(): void {
           s.set({ showActivity: !s.showActivity })
           break
         case 'splitRow':
+          s.splitWith(undefined, 'right')
+          break
         case 'splitColumn':
-          s.splitWith(undefined, cmd === 'splitRow' ? 'row' : 'column')
+          s.splitWith(undefined, 'bottom')
+          break
+        case 'splitLeft':
+          s.splitWith(undefined, 'left')
+          break
+        case 'splitUp':
+          s.splitWith(undefined, 'top')
+          break
+        case 'closePane':
+          if (space?.activeTabId) s.closePane(space.activeTabId)
+          break
+        case 'detachTab':
+          if (space?.activeTabId) s.detachTab(space.activeTabId)
           break
         case 'closeTab': {
-          const id = focusedTabId && space?.tabs.some((t) => t.id === focusedTabId) ? focusedTabId : space?.activeTabId
-          const tab = space?.tabs.find((t) => t.id === id)
+          const tab = space?.tabs.find((t) => t.id === space.activeTabId)
           if (tab) closeTabWithCleanup(tab)
           break
         }
@@ -127,24 +137,6 @@ function useMainEvents(): void {
       window.removeEventListener('keydown', onKey, true)
     }
   }, [])
-}
-
-function Pane({ tab, space, visible, area, focused }: { tab: Tab; space: Space; visible: boolean; area?: string; focused: boolean }) {
-  const keepMounted = isSession(tab)
-  if (!visible && !keepMounted) return null
-  return (
-    <div
-      className={`pane ${focused ? 'focused' : ''}`}
-      style={{ display: visible ? 'flex' : 'none', gridArea: area }}
-      onMouseDown={() => {
-        focusedTabId = tab.id
-      }}
-    >
-      {isSession(tab) && <TerminalView tab={tab} space={space} visible={visible} focused={focused} />}
-      {tab.kind === 'editor' && <EditorView tab={tab} focused={focused} />}
-      {tab.kind === 'sftp' && <SftpView tab={tab} />}
-    </div>
-  )
 }
 
 function Welcome({ space }: { space?: Space }) {
@@ -199,37 +191,12 @@ function Welcome({ space }: { space?: Space }) {
   )
 }
 
-function Workspace({ space, active }: { space: Space; active: boolean }) {
-  const [focus, setFocus] = useState<string | undefined>(space.activeTabId)
-  useEffect(() => setFocus(space.activeTabId), [space.activeTabId])
-  useEffect(() => {
-    const onFocus = (e: Event): void => setFocus((e as CustomEvent).detail)
-    window.addEventListener('orbit:focus', onFocus)
-    return () => window.removeEventListener('orbit:focus', onFocus)
-  }, [])
-  const split = space.split && space.tabs.some((t) => t.id === space.split!.tabId) && space.split.tabId !== space.activeTabId ? space.split : undefined
-  return (
-    <div className={`panes ${split ? 'split-' + split.direction : ''}`} style={{ display: active ? 'grid' : 'none' }}>
-      {space.tabs.length === 0 && <Welcome space={space} />}
-      {space.tabs.map((t) => {
-        const primary = t.id === space.activeTabId
-        const secondary = t.id === split?.tabId
-        return (
-          <Pane
-            key={t.id}
-            tab={t}
-            space={space}
-            visible={active && (primary || secondary)}
-            area={primary ? 'a' : secondary ? 'b' : undefined}
-            focused={active && focus === t.id}
-          />
-        )
-      })}
-    </div>
-  )
+export function App() {
+  const target = detachedTarget()
+  return target ? <DetachedApp {...target} /> : <MainApp />
 }
 
-export function App() {
+function MainApp() {
   const state = useStore()
   const space = selectActiveSpace(state)
   useMainEvents()
@@ -255,7 +222,7 @@ export function App() {
         <div className="body">
           <div className="workspaces">
             {state.spaces.map((s) => (
-              <Workspace key={s.id} space={s} active={s.id === space?.id} />
+              <Workspace key={s.id} space={s} active={s.id === space?.id} empty={<Welcome space={s} />} />
             ))}
             {!space && <Welcome />}
           </div>

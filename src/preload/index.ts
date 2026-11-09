@@ -49,6 +49,14 @@ const api: OrbitApi = {
   sftpRead: inv('sftp:read') as OrbitApi['sftpRead'],
   sftpWrite: inv('sftp:write') as OrbitApi['sftpWrite'],
 
+  detachTab: inv('window:detach') as OrbitApi['detachTab'],
+  closeDetached: inv('window:closeDetached') as OrbitApi['closeDetached'],
+  focusDetached: inv('window:focusDetached') as OrbitApi['focusDetached'],
+
+  updateState: inv('updates:state') as OrbitApi['updateState'],
+  checkForUpdates: inv('updates:check') as OrbitApi['checkForUpdates'],
+  installUpdate: inv('updates:install') as OrbitApi['installUpdate'],
+
   getActivity: inv('activity:get') as OrbitApi['getActivity'],
   registerMcpGlobal: inv('mcp:registerGlobal') as OrbitApi['registerMcpGlobal'],
 

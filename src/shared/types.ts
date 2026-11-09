@@ -1,3 +1,5 @@
+import type { LayoutNode } from './layout'
+
 export type TabKind = 'agent' | 'terminal' | 'ssh' | 'editor' | 'sftp'
 
 export type AgentStatus = 'idle' | 'working' | 'waiting' | 'done' | 'exited'
@@ -25,7 +27,11 @@ export interface Space {
   root: string
   color: string
   tabs: Tab[]
+  /** the focused tab (always shown in `layout` when there is one) */
   activeTabId?: string
+  /** visible panes; tabs not in the tree are hidden */
+  layout?: LayoutNode
+  /** @deprecated pre-0.2 single split, migrated to `layout` on load */
   split?: { tabId: string; direction: 'row' | 'column' }
 }
 
@@ -66,6 +72,8 @@ export interface Settings {
   agentCommands: Record<string, string>
   defaultAgent: string
   mcpToken?: string
+  /** check GitHub releases on startup and every few hours (default on) */
+  autoUpdate?: boolean
 }
 
 export interface ActivityEntry {
@@ -124,3 +132,11 @@ export type MainEvent =
   | { type: 'fs'; root: string; path: string; event: string }
   | { type: 'openTab'; spaceId?: string; tab: Tab }
   | { type: 'servers'; servers: Server[] }
+  | { type: 'detached'; tabId: string; detached: boolean }
+  | { type: 'update'; state: UpdateState }
+
+export type UpdateState =
+  | { status: 'idle' | 'checking' | 'none'; version?: string; error?: string }
+  | { status: 'available' | 'downloading'; version: string; percent?: number }
+  | { status: 'ready'; version: string }
+  | { status: 'error'; error: string; version?: string }

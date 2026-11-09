@@ -1,5 +1,4 @@
-import { app, BrowserWindow, Menu, shell } from 'electron'
-import { join } from 'path'
+import { app, BrowserWindow, Menu } from 'electron'
 import { store } from './store'
 import { registerIpc } from './ipc'
 import { startMcp, stopMcp } from './mcp'
@@ -8,46 +7,14 @@ import { unwatchAll } from './files'
 import { emit } from './events'
 import { shellEnv } from './shellEnv'
 import { accelerator, type Command } from '@shared/keys'
-import { isSafeExternalUrl } from './links'
+import { createMainWindow, mainWindow, markQuitting } from './windows'
+import { checkForUpdates, initUpdater } from './updater'
 
 const IS_MAC = process.platform === 'darwin'
 
 app.setName('Orbit')
-
-function createWindow(): BrowserWindow {
-  const win = new BrowserWindow({
-    width: 1480,
-    height: 920,
-    minWidth: 900,
-    minHeight: 560,
-    show: false,
-    backgroundColor: '#0b0d12',
-    titleBarStyle: IS_MAC ? 'hiddenInset' : 'default',
-    autoHideMenuBar: !IS_MAC,
-    icon: IS_MAC ? undefined : join(__dirname, '../../resources/icon.png'),
-    trafficLightPosition: { x: 14, y: 14 },
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
-      contextIsolation: true
-    }
-  })
-  win.once('ready-to-show', () => win.show())
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isSafeExternalUrl(url)) shell.openExternal(url)
-    return { action: 'deny' }
-  })
-  // the renderer is a single-page app: never let it navigate away from itself
-  win.webContents.on('will-navigate', (e, url) => {
-    if (url !== win.webContents.getURL()) {
-      e.preventDefault()
-      if (isSafeExternalUrl(url)) shell.openExternal(url)
-    }
-  })
-  if (process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL)
-  else win.loadFile(join(__dirname, '../renderer/index.html'))
-  return win
-}
+// separate profile for testing a second instance next to your everyday Orbit
+if (process.env.ORBIT_USER_DATA) app.setPath('userData', process.env.ORBIT_USER_DATA)
 
 function buildMenu(): void {
   const send = (cmd: string) => () => BrowserWindow.getFocusedWindow()?.webContents.send('orbit:command', cmd)
@@ -68,7 +35,25 @@ function buildMenu(): void {
         ]
       }
   const template: Electron.MenuItemConstructorOptions[] = [
-    ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
+    ...(IS_MAC
+      ? [
+          {
+            label: app.name,
+            submenu: [
+              { role: 'about' as const },
+              { label: 'Check for Updates…', click: () => checkForUpdates(true) },
+              { type: 'separator' as const },
+              { role: 'services' as const },
+              { type: 'separator' as const },
+              { role: 'hide' as const },
+              { role: 'hideOthers' as const },
+              { role: 'unhide' as const },
+              { type: 'separator' as const },
+              { role: 'quit' as const }
+            ]
+          }
+        ]
+      : []),
     {
       label: 'File',
       submenu: [
@@ -88,8 +73,13 @@ function buildMenu(): void {
         item('Command Palette', 'palette'),
         item('Toggle Files', 'toggleFiles'),
         item('Toggle Activity', 'toggleActivity'),
+        { type: 'separator' },
         item('Split Right', 'splitRow'),
         item('Split Down', 'splitColumn'),
+        { label: 'Split Left', click: send('splitLeft') },
+        { label: 'Split Up', click: send('splitUp') },
+        item('Close Pane', 'closePane'),
+        item('Move Tab to New Window', 'detachTab'),
         { type: 'separator' },
         { role: 'reload' },
         { role: 'toggleDevTools' },
@@ -99,7 +89,8 @@ function buildMenu(): void {
         { role: 'togglefullscreen' }
       ]
     },
-    { role: 'windowMenu' }
+    { role: 'windowMenu' },
+    ...(IS_MAC ? [] : [{ label: 'Help', submenu: [{ label: 'Check for Updates…', click: () => checkForUpdates(true) }] }])
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
@@ -111,9 +102,10 @@ app.whenReady().then(async () => {
   await startMcp()
   registerIpc()
   buildMenu()
-  createWindow()
+  createMainWindow()
+  initUpdater()
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (!mainWindow()) createMainWindow()
   })
 })
 
@@ -122,6 +114,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  markQuitting()
   store.flush()
   killAll()
   unwatchAll()

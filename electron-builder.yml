@@ -17,11 +17,20 @@ asarUnpack:
 npmRebuild: false
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 
+# Auto-update reads latest*.yml from GitHub Releases (see src/main/updater.ts).
+publish:
+  provider: github
+  owner: FlaShadowK
+  repo: orbit
+
 mac:
   category: public.app-category.developer-tools
   icon: build/icon.icns
   target:
     - target: dmg
+      arch: [arm64, x64]
+    # the in-app updater downloads this zip and swaps the app bundle
+    - target: zip
       arch: [arm64, x64]
   extendInfo:
     NSAppleEventsUsageDescription: Orbit runs your shell and developer tools.

@@ -34,7 +34,13 @@ export function Palette() {
         state.notify(n ? `Imported ${n} host(s)` : 'No new hosts found')
       }
     })
-    list.push({ id: 'split', label: 'Split right with new terminal', hint: keyLabel('splitRow', IS_MAC), icon: 'split', run: () => state.splitWith(undefined, 'row') })
+    list.push({ id: 'split', label: 'Split right with new terminal', hint: keyLabel('splitRow', IS_MAC), icon: 'split', run: () => state.splitWith(undefined, 'right') })
+    list.push({ id: 'split-down', label: 'Split down with new terminal', hint: keyLabel('splitColumn', IS_MAC), icon: 'split-down', run: () => state.splitWith(undefined, 'bottom') })
+    list.push({ id: 'split-left', label: 'Split left with new terminal', icon: 'split-left', run: () => state.splitWith(undefined, 'left') })
+    list.push({ id: 'split-up', label: 'Split up with new terminal', icon: 'split-up', run: () => state.splitWith(undefined, 'top') })
+    const focused = selectActiveSpace(state)?.activeTabId
+    if (focused) list.push({ id: 'detach', label: 'Move tab to new window', hint: keyLabel('detachTab', IS_MAC), icon: 'window', run: () => state.detachTab(focused) })
+    list.push({ id: 'updates', label: 'Check for updates', icon: 'refresh', run: () => window.orbit.checkForUpdates() })
     list.push({ id: 'files', label: 'Toggle file tree', hint: keyLabel('toggleFiles', IS_MAC), icon: 'sidebar', run: () => state.set({ showFiles: !state.showFiles }) })
     list.push({ id: 'activity', label: 'Toggle activity log', hint: keyLabel('toggleActivity', IS_MAC), icon: 'activity', run: () => state.set({ showActivity: !state.showActivity }) })
     list.push({ id: 'settings', label: 'Settings', icon: 'settings', run: () => state.set({ settingsOpen: true }) })

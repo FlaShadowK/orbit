@@ -132,6 +132,7 @@ export function Sidebar() {
         </div>
       </div>
 
+      <UpdatePill />
       <div className="sidebar-foot">
         <button className="icon-btn" title={`Activity log (${keyLabel('toggleActivity', IS_MAC)})`} onClick={() => set({ showActivity: !useStore.getState().showActivity })}>
           <Icon name="activity" />
@@ -145,4 +146,29 @@ export function Sidebar() {
       </div>
     </aside>
   )
+}
+
+/** Shown in the sidebar while an update downloads, and as a restart button once it's ready. */
+function UpdatePill() {
+  const update = useStore((s) => s.update)
+  if (update.status === 'downloading')
+    return (
+      <div className="update-pill" title={`Downloading Orbit ${update.version}`}>
+        <Icon name="refresh" size={12} /> v{update.version}
+        <span className="bar"><i style={{ width: `${update.percent ?? 0}%` }} /></span>
+      </div>
+    )
+  if (update.status === 'ready')
+    return (
+      <button className="update-pill" onClick={() => window.orbit.installUpdate()} title="Restart Orbit to install the update">
+        <Icon name="check" size={12} /> Restart to update to v{update.version}
+      </button>
+    )
+  if (update.status === 'available')
+    return (
+      <button className="update-pill" onClick={() => window.orbit.openExternal('https://github.com/FlaShadowK/orbit/releases/latest')}>
+        <Icon name="globe" size={12} /> Orbit {update.version} is available
+      </button>
+    )
+  return null
 }
