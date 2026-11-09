@@ -488,7 +488,7 @@ button.update-pill:hover { border-color: var(--accent); }
 /* ---------- server stats (Beszel) ---------- */
 .server-item { border-radius: 8px; }
 .server-item + .server-item { margin-top: 2px; }
-.server-stats { padding: 2px 8px 8px 23px; }
+.server-stats { padding: 2px 2px 6px; }
 .stats-head { display: flex; align-items: center; gap: 6px; height: 18px; }
 .stats-led { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-3); flex: none; }
 .stats-led.up { background: var(--ok); box-shadow: 0 0 5px rgba(126, 231, 135, 0.7); }
@@ -562,3 +562,4 @@ button.update-pill:hover { border-color: var(--accent); }
 .form-grid label.check-row { flex-direction: row; align-items: center; text-align: left; gap: 8px; flex-wrap: wrap; }
 .form-grid label.check-row input { width: auto; }
 .metric-chip.unavailable { opacity: 0.45; }
+.server-stats .stats-head { padding-left: 6px; }
