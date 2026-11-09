@@ -444,15 +444,20 @@ button.update-pill:hover { border-color: var(--accent); }
 .branch-list button:hover { background: var(--bg-3); color: var(--fg); }
 .branch-list button.current { color: var(--accent); }
 .branch-none { padding: 6px 8px; }
-.git-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.git-actions { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 4px; }
 .git-btn {
-  display: flex; align-items: center; justify-content: center; gap: 5px; padding: 6px 4px; border-radius: 7px; font-size: 11.5px;
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  padding: 6px 2px 5px; border-radius: 7px; font-size: 10.5px; min-width: 0;
   background: var(--bg-2); border: 1px solid var(--line); color: var(--fg-2);
 }
+.git-btn > span:not(.git-count) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .git-btn:hover:not(:disabled) { color: var(--fg); border-color: var(--line-2); background: var(--bg-3); }
 .git-btn:disabled { opacity: 0.45; cursor: default; }
 .git-btn.has { color: var(--fg); border-color: rgba(245, 194, 107, 0.4); }
-.git-count { font: 600 10px var(--mono); padding: 0 5px; border-radius: 8px; background: var(--accent); color: #0b0d12; }
+.git-count {
+  position: absolute; top: 3px; right: 4px; font: 600 9px var(--mono); line-height: 14px; min-width: 14px; padding: 0 4px;
+  border-radius: 7px; background: var(--accent); color: #0b0d12; text-align: center;
+}
 
 /* ---------- code review tab ---------- */
 .changes { flex: 1; min-height: 0; display: flex; }

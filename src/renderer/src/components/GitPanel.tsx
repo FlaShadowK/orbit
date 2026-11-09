@@ -74,9 +74,9 @@ export function GitPanel({ space }: { space: Space }) {
     <div className="git-panel">
       <BranchPicker space={space} lock={lock} />
       <div className="git-actions">
-        <button className={`git-btn ${changes ? 'has' : ''}`} onClick={openChanges} title="Review changes">
+        <button className={`git-btn review ${changes ? 'has' : ''}`} onClick={openChanges} title="Review changes">
           <Icon name="diff" size={13} />
-          <span>Changes</span>
+          <span>Review</span>
           {changes > 0 && <span className="git-count">{changes}</span>}
         </button>
         <button className="git-btn" onClick={() => run('pull')} disabled={!!running} title={st.upstream ? `Pull from ${st.upstream}` : 'Pull'}>
