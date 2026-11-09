@@ -1,5 +1,5 @@
 import { BrowserWindow, Notification } from 'electron'
-import type { ActivityEntry, AgentStatus, MainEvent } from '@shared/types'
+import type { ActivityEntry, AgentActivity, AgentStatus, MainEvent } from '@shared/types'
 import { showMain } from './windows'
 
 export function emit(ev: MainEvent): void {
@@ -36,6 +36,18 @@ export function setStatus(tabId: string, status: AgentStatus): void {
     })
     n.show()
   }
+}
+
+export function getStatus(tabId: string): AgentStatus | undefined {
+  return statuses.get(tabId)
+}
+
+const activities = new Map<string, AgentActivity>()
+/** Fine-grained state of a working agent (drives the orbit animation speed). */
+export function setActivity(tabId: string, activity: AgentActivity): void {
+  if (activities.get(tabId) === activity) return
+  activities.set(tabId, activity)
+  emit({ type: 'agentActivity', tabId, activity })
 }
 
 export function getStatuses(): Record<string, AgentStatus> {

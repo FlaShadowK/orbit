@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Space, Tab } from '@shared/types'
 import { useStore } from '@/store'
 import { Icon } from './Icon'
@@ -32,12 +32,13 @@ export const TAB_ICON: Record<Tab['kind'], string> = {
 }
 
 export function TabBar({ space }: { space: Space }) {
-  const { statuses, dirty, detached, setActiveTab, updateTab, moveTab, splitWith, closePane, showFiles, set } = useStore()
+  const { statuses, activities, dirty, detached, setActiveTab, updateTab, moveTab, splitWith, closePane, showFiles, set } = useStore()
   const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null)
   const [tabMenu, setTabMenu] = useState<{ tab: Tab; x: number; y: number } | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
   const multi = leafCount(space.layout) > 1
+  const pulsing = useDonePulse(statuses)
 
   return (
     <div className="tabbar drag">
@@ -49,7 +50,7 @@ export function TabBar({ space }: { space: Space }) {
           return (
             <div
               key={t.id}
-              className={`tab ${active ? 'active' : ''} ${shown ? 'shown' : ''} ${isDetached ? 'detached' : ''} ${dropIndex === i ? 'drop-before' : ''} kind-${t.kind}`}
+              className={`tab ${active ? 'active' : ''} ${shown ? 'shown' : ''} ${isDetached ? 'detached' : ''} ${dropIndex === i ? 'drop-before' : ''} ${pulsing.has(t.id) ? 'pulse-done' : ''} kind-${t.kind}`}
               onMouseDown={(e) => e.button === 1 && closeTabWithCleanup(t)}
               onClick={() => setActiveTab(t.id)}
               onDoubleClick={() => setRenaming(t.id)}
@@ -101,7 +102,7 @@ export function TabBar({ space }: { space: Space }) {
               ) : (
                 <span className="tab-title">{t.title}</span>
               )}
-              {t.kind === 'agent' && <StatusDot status={statuses[t.id]} />}
+              {t.kind === 'agent' && <StatusDot status={statuses[t.id]} activity={activities[t.id]} />}
               {dirty[t.id] && <span className="dirty-dot" title="Unsaved changes" />}
               <button
                 className="tab-close"
@@ -148,6 +149,31 @@ export function TabBar({ space }: { space: Space }) {
       {tabMenu && <TabMenu space={space} {...tabMenu} onClose={() => setTabMenu(null)} onRename={() => setRenaming(tabMenu.tab.id)} />}
     </div>
   )
+}
+
+/** Tabs whose agent just finished: they get one green pulse (~1.3s). */
+function useDonePulse(statuses: Record<string, string>): Set<string> {
+  const prev = useRef(statuses)
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+  const [pulsing, setPulsing] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    const finished = Object.keys(statuses).filter((id) => statuses[id] === 'done' && prev.current[id] !== 'done')
+    prev.current = statuses
+    for (const id of finished) {
+      setPulsing((p) => new Set(p).add(id))
+      // each pulse ends on its own timer: later status changes (e.g. done → idle) must not cancel it
+      clearTimeout(timers.current.get(id))
+      timers.current.set(
+        id,
+        setTimeout(() => {
+          timers.current.delete(id)
+          setPulsing((p) => new Set([...p].filter((x) => x !== id)))
+        }, 1400)
+      )
+    }
+  }, [statuses])
+  useEffect(() => () => timers.current.forEach(clearTimeout), [])
+  return pulsing
 }
 
 const SPLITS: { side: Exclude<DropSide, 'center'>; label: string; icon: string }[] = [

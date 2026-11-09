@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ActivityEntry, AgentInfo, AgentStatus, OrbitInfo, Server, Space, Tab, UpdateState } from '@shared/types'
+import type { ActivityEntry, AgentActivity, AgentInfo, AgentStatus, OrbitInfo, Server, Space, Tab, UpdateState } from '@shared/types'
 import { basename, IS_MAC, SPACE_COLORS, uid } from './lib/util'
 import { keyLabel } from '@shared/keys'
 import { hasTab, leaf, leafCount, placeTab as placeInLayout, prune, removeTab, replaceTab, setRatio, tabsIn, type DropSide } from '@shared/layout'
@@ -14,6 +14,8 @@ interface State {
   servers: Server[]
   agents: AgentInfo[]
   statuses: Record<string, AgentStatus>
+  /** what a working agent is doing right now (orbit speed) */
+  activities: Record<string, AgentActivity>
   activity: ActivityEntry[]
   dirty: Record<string, boolean>
   /** tab ids whose session has been started at least once in this renderer */
@@ -129,6 +131,7 @@ export const useStore = create<State>((set, get) => {
     servers: [],
     agents: [],
     statuses: {},
+    activities: {},
     activity: [],
     dirty: {},
     showFiles: true,
@@ -370,6 +373,12 @@ export const useStore = create<State>((set, get) => {
 })
 
 export const selectActiveSpace = (s: State): Space | undefined => s.spaces.find((x) => x.id === s.activeSpaceId)
+
+/** The most active working agent in a space (for the sidebar indicator). */
+export function spaceActivity(space: Space, statuses: Record<string, AgentStatus>, activities: Record<string, AgentActivity>): AgentActivity | undefined {
+  const acts = space.tabs.filter((t) => statuses[t.id] === 'working').map((t) => activities[t.id] ?? 'thinking')
+  return acts.includes('streaming') ? 'streaming' : acts.includes('thinking') ? 'thinking' : acts[0]
+}
 
 export function spaceStatus(space: Space, statuses: Record<string, AgentStatus>): AgentStatus | undefined {
   const st = space.tabs.filter((t) => t.kind === 'agent').map((t) => statuses[t.id])

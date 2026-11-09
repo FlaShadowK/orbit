@@ -27,6 +27,9 @@ function useMainEvents(): void {
         case 'status':
           st().set({ statuses: { ...st().statuses, [e.tabId]: e.status } })
           break
+        case 'agentActivity':
+          st().set({ activities: { ...st().activities, [e.tabId]: e.activity } })
+          break
         case 'agentStarted':
           st().updateTab(e.tabId, { agentStarted: true })
           break
@@ -205,10 +208,15 @@ function MainApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // clear "done" badge once the user looks at the tab
+  // clear the green "done" dot a few seconds after the user looks at the tab
   useEffect(() => {
     const id = space?.activeTabId
-    if (id && state.statuses[id] === 'done') state.set({ statuses: { ...state.statuses, [id]: 'idle' } })
+    if (!id || state.statuses[id] !== 'done') return
+    const t = setTimeout(() => {
+      const s = useStore.getState()
+      if (s.statuses[id] === 'done') s.set({ statuses: { ...s.statuses, [id]: 'idle' } })
+    }, 3000)
+    return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [space?.activeTabId, state.statuses])
 

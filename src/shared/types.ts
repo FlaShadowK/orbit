@@ -4,6 +4,9 @@ export type TabKind = 'agent' | 'terminal' | 'ssh' | 'editor' | 'sftp'
 
 export type AgentStatus = 'idle' | 'working' | 'waiting' | 'done' | 'exited'
 
+/** While working: printing output (fast orbit), thinking (slow), or extended thinking (slowest, red) */
+export type AgentActivity = 'streaming' | 'thinking' | 'deep'
+
 export interface Tab {
   id: string
   kind: TabKind
@@ -128,6 +131,7 @@ export interface OrbitInfo {
 export type MainEvent =
   | { type: 'status'; tabId: string; status: AgentStatus }
   | { type: 'agentStarted'; tabId: string }
+  | { type: 'agentActivity'; tabId: string; activity: AgentActivity }
   | { type: 'activity'; entry: ActivityEntry }
   | { type: 'fs'; root: string; path: string; event: string }
   | { type: 'openTab'; spaceId?: string; tab: Tab }

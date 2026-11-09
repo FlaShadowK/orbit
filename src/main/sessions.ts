@@ -6,7 +6,8 @@ import type { SessionSpec } from '@shared/types'
 import { agentLaunch } from './agents'
 import { defaultShell, shellEnv } from './shellEnv'
 import { openShell } from './ssh'
-import { send, setStatus } from './events'
+import { getStatus, send, setActivity, setStatus } from './events'
+import { ActivityTracker } from './agentActivity'
 import { store } from './store'
 
 const SCROLLBACK = 256 * 1024
@@ -18,6 +19,9 @@ interface Session {
   buffer: string
   agent: boolean
   idleTimer?: NodeJS.Timeout
+  /** agents only: classifies output while working, polled to report activity changes */
+  tracker?: ActivityTracker
+  activityTimer?: NodeJS.Timeout
 }
 
 const sessions = new Map<string, Session>()
@@ -27,6 +31,7 @@ function onData(id: string, data: string): void {
   if (s) {
     s.buffer += data
     if (s.buffer.length > SCROLLBACK) s.buffer = s.buffer.slice(-SCROLLBACK)
+    s.tracker?.feed(data)
   }
   send('term:data', id, data)
 }
@@ -34,6 +39,7 @@ function onData(id: string, data: string): void {
 function onExit(id: string, code: number | null): void {
   const s = sessions.get(id)
   if (s?.agent) setStatus(id, 'exited')
+  clearInterval(s?.activityTimer)
   sessions.delete(id)
   send('term:exit', id, code)
 }
@@ -108,7 +114,13 @@ export async function startSession(spec: SessionSpec): Promise<{ replay?: string
     kill: () => proc.kill()
   }
   sessions.set(spec.id, session)
-  if (isAgent) setStatus(spec.id, 'idle')
+  if (isAgent) {
+    setStatus(spec.id, 'idle')
+    session.tracker = new ActivityTracker()
+    session.activityTimer = setInterval(() => {
+      if (getStatus(spec.id) === 'working') setActivity(spec.id, session.tracker!.current())
+    }, 250)
+  }
   proc.onData((d) => {
     onData(spec.id, d)
     // generic activity heuristic for agents without status hooks
@@ -132,6 +144,7 @@ export function killSession(id: string): void {
   const s = sessions.get(id)
   if (!s) return
   clearTimeout(s.idleTimer)
+  clearInterval(s.activityTimer)
   s.kill()
   sessions.delete(id)
 }

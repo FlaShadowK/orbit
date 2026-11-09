@@ -119,12 +119,54 @@ kbd { font: 10px var(--mono); color: var(--fg-3); border: 1px solid var(--line-2
 .foot-palette:hover { color: var(--fg); border-color: var(--line-2); }
 
 /* ---------- status ---------- */
-.status-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
-.status-dot.s-idle { background: var(--fg-3); opacity: 0.5; }
-.status-dot.s-working { background: var(--accent); box-shadow: 0 0 0 0 rgba(139, 155, 255, 0.6); animation: pulse 1.4s infinite; }
-.status-dot.s-waiting { background: var(--warn); box-shadow: 0 0 8px rgba(245, 194, 107, 0.8); }
-.status-dot.s-done { background: var(--ok); }
-.status-dot.s-exited { background: var(--bad); opacity: 0.7; }
+.agent-ind { display: inline-flex; align-items: center; gap: 5px; flex: none; }
+.orb { position: relative; width: 9px; height: 18px; flex: none; transition: width 0.4s cubic-bezier(0.3, 1.3, 0.5, 1); }
+.agent-ind.st-working .orb { width: 18px; }
+.orb-planet {
+  position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%;
+  background: var(--dot, var(--fg-3)); z-index: 2;
+  transition: transform 0.45s cubic-bezier(0.3, 1.5, 0.5, 1), background 0.35s, box-shadow 0.35s;
+}
+.orb-ring, .orb-track { position: absolute; left: 50%; top: 50%; width: 17px; height: 6.6px; margin: -3.3px 0 0 -8.5px; transform: rotate(-22deg) scale(0.15); opacity: 0;
+  transition: transform 0.45s cubic-bezier(0.3, 1.4, 0.5, 1), opacity 0.3s; }
+.orb-ring { border-radius: 50%; border: 1.2px solid var(--ring, rgba(157, 184, 255, 0.85)); border-left-color: var(--ring-2, rgba(94, 234, 212, 0.9)); z-index: 1; }
+.orb-track { z-index: 3; }
+.orb-sat {
+  position: absolute; left: 0; top: 0; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%;
+  background: var(--sat, #99f6e4); box-shadow: 0 0 4px var(--sat-glow, rgba(94, 234, 212, 0.9));
+  offset-path: path('M 0 3.3 A 8.5 3.3 0 1 0 17 3.3 A 8.5 3.3 0 1 0 0 3.3'); offset-rotate: 0deg;
+}
+/* working: the dot grows into the planet and the ring + satellite fade in */
+.st-working .orb-planet {
+  transform: scale(1.3);
+  background: var(--planet, radial-gradient(circle at 35% 30%, #fff 0 10%, #a5b4ff 35%, #5b4be0 75%, #23186b));
+  box-shadow: 0 0 6px var(--planet-glow, rgba(139, 155, 255, 0.55));
+}
+.st-working .orb-ring, .st-working .orb-track { transform: rotate(-22deg) scale(1); opacity: 1; }
+/* thinking hard: red, and the satellite slows right down */
+.act-deep {
+  --planet: radial-gradient(circle at 35% 30%, #fff 0 10%, #ffb4c0 32%, #e2475f 72%, #6b1424);
+  --planet-glow: rgba(255, 107, 129, 0.6); --ring: rgba(255, 143, 160, 0.85); --ring-2: rgba(255, 180, 120, 0.9);
+  --sat: #ffd2a8; --sat-glow: rgba(255, 143, 160, 0.9);
+}
+.st-idle { --dot: var(--fg-3); }
+.st-idle .orb-planet { opacity: 0.5; }
+.st-done { --dot: var(--ok); }
+.st-done .orb-planet { box-shadow: 0 0 6px rgba(126, 231, 135, 0.6); }
+.st-exited { --dot: var(--bad); }
+.st-exited .orb-planet { opacity: 0.7; }
+.st-waiting { --dot: var(--warn); }
+.st-waiting .orb-planet { box-shadow: 0 0 8px rgba(245, 194, 107, 0.85); animation: waiting-glow 1.6s ease-in-out infinite; }
+.needs-you { font-size: 10.5px; font-weight: 700; color: var(--warn); letter-spacing: 0.01em; white-space: nowrap; animation: needs-in 0.35s ease-out; }
+@keyframes waiting-glow { 50% { box-shadow: 0 0 2px rgba(245, 194, 107, 0.4); } }
+@keyframes needs-in { from { opacity: 0; transform: translateX(4px); } }
+/* a finished agent's tab gives one green pulse */
+.tab.pulse-done { animation: tab-done 1.3s ease-out 1; }
+@keyframes tab-done {
+  0% { box-shadow: inset 0 0 0 1px rgba(126, 231, 135, 0), 0 0 0 0 rgba(126, 231, 135, 0.55); background: rgba(126, 231, 135, 0.16); }
+  40% { box-shadow: inset 0 0 0 1px rgba(126, 231, 135, 0.7), 0 0 0 5px rgba(126, 231, 135, 0); }
+  100% { box-shadow: inset 0 0 0 1px rgba(126, 231, 135, 0), 0 0 0 0 rgba(126, 231, 135, 0); }
+}
 @keyframes pulse {
   0% { box-shadow: 0 0 0 0 rgba(139, 155, 255, 0.6); }
   70% { box-shadow: 0 0 0 6px rgba(139, 155, 255, 0); }

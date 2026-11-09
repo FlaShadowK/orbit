@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { spaceStatus, useStore } from '@/store'
+import { spaceActivity, spaceStatus, useStore } from '@/store'
 import { Icon } from './Icon'
 import { StatusDot } from './StatusDot'
 import { keyLabel } from '@shared/keys'
@@ -11,7 +11,7 @@ export async function createSpaceFromPicker(): Promise<void> {
 }
 
 export function Sidebar() {
-  const { spaces, activeSpaceId, statuses, servers, setActiveSpace, removeSpace, updateSpace, openSsh, openSftp, set } = useStore()
+  const { spaces, activeSpaceId, statuses, activities, servers, setActiveSpace, removeSpace, updateSpace, openSsh, openSftp, set } = useStore()
   const [renaming, setRenaming] = useState<string | null>(null)
   const [menu, setMenu] = useState<string | null>(null)
 
@@ -70,7 +70,7 @@ export function Sidebar() {
               ) : (
                 <span className="space-name">{s.name}</span>
               )}
-              {st && <StatusDot status={st} />}
+              {st && <StatusDot status={st} activity={spaceActivity(s, statuses, activities)} />}
               {agents > 0 && <span className="pill">{agents}</span>}
               <span className="kbd-hint">{i < 9 ? (IS_MAC ? `⌃${i + 1}` : `Ctrl+Alt+${i + 1}`) : ''}</span>
               {menu === s.id && (
