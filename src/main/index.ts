@@ -4,6 +4,7 @@ import { registerIpc } from './ipc'
 import { startMcp, stopMcp } from './mcp'
 import { killAll } from './sessions'
 import { unwatchAll } from './files'
+import { unwatchAll as unwatchGit } from './git'
 import { emit } from './events'
 import { shellEnv } from './shellEnv'
 import { accelerator, type Command } from '@shared/keys'
@@ -118,5 +119,6 @@ app.on('before-quit', () => {
   store.flush()
   killAll()
   unwatchAll()
+  unwatchGit()
   stopMcp()
 })

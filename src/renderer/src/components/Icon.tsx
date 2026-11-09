@@ -25,7 +25,13 @@ const PATHS: Record<string, string> = {
   sidebar: 'M3 4h18v16H3zM9 4v16',
   link: 'M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7',
   globe: 'M12 22a10 10 0 100-20 10 10 0 000 20zM2 12h20M12 2a15 15 0 010 20M12 2a15 15 0 000 20',
-  check: 'M20 6L9 17l-5-5'
+  check: 'M20 6L9 17l-5-5',
+  branch: 'M6 3v12M18 9a3 3 0 100-6 3 3 0 000 6zM6 21a3 3 0 100-6 3 3 0 000 6zM18 9a9 9 0 01-9 9',
+  commit: 'M12 15a3 3 0 100-6 3 3 0 000 6zM3 12h6M15 12h6',
+  diff: 'M12 3v14M5 10h14M5 21h14',
+  'arrow-down': 'M12 5v14M19 12l-7 7-7-7',
+  'arrow-up': 'M12 19V5M5 12l7-7 7 7',
+  lock: 'M5 11h14v10H5zM8 11V7a4 4 0 018 0v4'
 }
 
 export function Icon({ name, size = 14 }: { name: string; size?: number }) {

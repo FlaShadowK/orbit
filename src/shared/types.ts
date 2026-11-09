@@ -1,6 +1,6 @@
 import type { LayoutNode } from './layout'
 
-export type TabKind = 'agent' | 'terminal' | 'ssh' | 'editor' | 'sftp'
+export type TabKind = 'agent' | 'terminal' | 'ssh' | 'editor' | 'sftp' | 'changes'
 
 export type AgentStatus = 'idle' | 'working' | 'waiting' | 'done' | 'exited'
 
@@ -113,6 +113,31 @@ export interface SessionSpec {
   rows: number
 }
 
+export type GitChangeKind = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'conflict'
+
+export interface GitChange {
+  /** relative to the repository root */
+  path: string
+  /** absolute path on disk */
+  abs: string
+  origPath?: string
+  kind: GitChangeKind
+  staged: boolean
+  unstaged: boolean
+}
+
+export interface GitStatus {
+  isRepo: boolean
+  /** repository root (may be above the space folder) */
+  root?: string
+  branch?: string
+  detached?: boolean
+  upstream?: string
+  ahead: number
+  behind: number
+  files: GitChange[]
+}
+
 export interface DirEntry {
   name: string
   path: string
@@ -136,6 +161,8 @@ export type MainEvent =
   | { type: 'fs'; root: string; path: string; event: string }
   | { type: 'openTab'; spaceId?: string; tab: Tab }
   | { type: 'servers'; servers: Server[] }
+  /** something under .git changed (commit, checkout, fetch…), possibly from a terminal */
+  | { type: 'git'; root: string }
   | { type: 'detached'; tabId: string; detached: boolean }
   | { type: 'update'; state: UpdateState }
 

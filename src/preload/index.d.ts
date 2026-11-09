@@ -1,6 +1,6 @@
 import type {
   ActivityEntry, AgentInfo, AgentStatus, DirEntry, MainEvent, OrbitInfo, Server, ServerInput,
-  SessionSpec, Settings, Space, UpdateState
+  SessionSpec, Settings, Space, UpdateState, GitChange, GitStatus
 } from '../shared/types'
 
 export interface OrbitApi {
@@ -23,6 +23,8 @@ export interface OrbitApi {
   termResize(id: string, cols: number, rows: number): void
   termKill(id: string): Promise<void>
   saveImage(bytes: Uint8Array, mime: string): Promise<string>
+  /** foreground process per terminal (null = idle at the prompt) */
+  termForeground(ids: string[]): Promise<Record<string, string | null>>
   pathForFile(file: File): string
   onTermData(cb: (id: string, data: string) => void): () => void
   onTermExit(cb: (id: string, code: number | null) => void): () => void
@@ -43,6 +45,18 @@ export interface OrbitApi {
   sftpList(serverId: string, path: string): Promise<DirEntry[]>
   sftpRead(serverId: string, path: string): Promise<string>
   sftpWrite(serverId: string, path: string, content: string): Promise<void>
+
+  git: {
+    status(cwd: string): Promise<GitStatus>
+    branches(cwd: string): Promise<string[]>
+    fileVersions(cwd: string, change: GitChange): Promise<{ original: string; modified: string; binary: boolean }>
+    commit(cwd: string, message: string, paths: string[]): Promise<string>
+    pull(cwd: string): Promise<string>
+    push(cwd: string): Promise<string>
+    checkout(cwd: string, branch: string, create: boolean): Promise<string>
+    init(cwd: string): Promise<string>
+    watch(cwd: string): Promise<void>
+  }
 
   /** open a tab in its own window (optionally where it was dropped, in screen coordinates) */
   detachTab(req: { tabId: string; spaceId: string; title: string; at?: { x: number; y: number } }): Promise<void>

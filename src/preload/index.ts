@@ -28,6 +28,7 @@ const api: OrbitApi = {
   termResize: (id, cols, rows) => ipcRenderer.send('term:resize', id, cols, rows),
   termKill: inv('term:kill') as OrbitApi['termKill'],
   saveImage: inv('clipboard:saveImage') as OrbitApi['saveImage'],
+  termForeground: inv('term:foreground') as OrbitApi['termForeground'],
   pathForFile: (file) => webUtils.getPathForFile(file),
   onTermData: (cb) => listen('term:data', cb),
   onTermExit: (cb) => listen('term:exit', cb),
@@ -48,6 +49,18 @@ const api: OrbitApi = {
   sftpList: inv('sftp:list') as OrbitApi['sftpList'],
   sftpRead: inv('sftp:read') as OrbitApi['sftpRead'],
   sftpWrite: inv('sftp:write') as OrbitApi['sftpWrite'],
+
+  git: {
+    status: inv('git:status') as OrbitApi['git']['status'],
+    branches: inv('git:branches') as OrbitApi['git']['branches'],
+    fileVersions: inv('git:fileVersions') as OrbitApi['git']['fileVersions'],
+    commit: inv('git:commit') as OrbitApi['git']['commit'],
+    pull: inv('git:pull') as OrbitApi['git']['pull'],
+    push: inv('git:push') as OrbitApi['git']['push'],
+    checkout: inv('git:checkout') as OrbitApi['git']['checkout'],
+    init: inv('git:init') as OrbitApi['git']['init'],
+    watch: inv('git:watch') as OrbitApi['git']['watch']
+  },
 
   detachTab: inv('window:detach') as OrbitApi['detachTab'],
   closeDetached: inv('window:closeDetached') as OrbitApi['closeDetached'],

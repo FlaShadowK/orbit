@@ -2,6 +2,7 @@ import * as pty from 'node-pty'
 import type { ClientChannel } from 'ssh2'
 import { existsSync } from 'fs'
 import { homedir } from 'os'
+import { basename } from 'path'
 import type { SessionSpec } from '@shared/types'
 import { agentLaunch } from './agents'
 import { defaultShell, shellEnv } from './shellEnv'
@@ -13,6 +14,8 @@ import { store } from './store'
 const SCROLLBACK = 256 * 1024
 
 interface Session {
+  /** foreground process name if it's not the shell itself (e.g. "npm", "git"), else null */
+  foreground?(): string | null
   write(data: string): void
   resize(cols: number, rows: number): void
   kill(): void
@@ -25,6 +28,12 @@ interface Session {
 }
 
 const sessions = new Map<string, Session>()
+const SHELLS = new Set(['zsh', 'bash', 'sh', 'fish', 'dash', 'ksh', 'tcsh', 'csh', 'nu', 'pwsh', 'powershell', 'login'])
+
+/** What each terminal is running right now (null = idle at a prompt). Used to lock branch switching. */
+export function foregroundProcesses(ids: string[]): Record<string, string | null> {
+  return Object.fromEntries(ids.map((id) => [id, sessions.get(id)?.foreground?.() ?? null]))
+}
 
 function onData(id: string, data: string): void {
   const s = sessions.get(id)
@@ -103,6 +112,11 @@ export async function startSession(spec: SessionSpec): Promise<{ replay?: string
   const session: Session = {
     buffer: '',
     agent: isAgent,
+    foreground: () => {
+      if (process.platform === 'win32') return null // node-pty can't see the foreground process on Windows
+      const name = basename(proc.process || '').replace(/^-/, '')
+      return !name || SHELLS.has(name) ? null : name
+    },
     write: (d) => proc.write(d),
     resize: (cols, rows) => {
       try {

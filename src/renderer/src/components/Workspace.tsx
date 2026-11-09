@@ -5,6 +5,7 @@ import { useStore } from '@/store'
 import { TerminalView } from './TerminalView'
 import { EditorView } from './EditorView'
 import { SftpView } from './SftpView'
+import { ChangesView } from './ChangesView'
 
 export const isSession = (t: Tab): boolean => t.kind === 'agent' || t.kind === 'terminal' || t.kind === 'ssh'
 
@@ -32,6 +33,7 @@ export function PaneContent({ tab, space, visible, focused }: { tab: Tab; space:
       {isSession(tab) && <TerminalView tab={tab} space={space} visible={visible} focused={focused} />}
       {tab.kind === 'editor' && <EditorView tab={tab} focused={focused} />}
       {tab.kind === 'sftp' && <SftpView tab={tab} />}
+      {tab.kind === 'changes' && <ChangesView space={space} focused={focused} />}
     </>
   )
 }

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ActivityEntry, AgentActivity, AgentInfo, AgentStatus, OrbitInfo, Server, Space, Tab, UpdateState } from '@shared/types'
+import type { ActivityEntry, AgentActivity, AgentInfo, AgentStatus, GitStatus, OrbitInfo, Server, Space, Tab, UpdateState } from '@shared/types'
 import { basename, IS_MAC, SPACE_COLORS, uid } from './lib/util'
 import { keyLabel } from '@shared/keys'
 import { hasTab, leaf, leafCount, placeTab as placeInLayout, prune, removeTab, replaceTab, setRatio, tabsIn, type DropSide } from '@shared/layout'
@@ -30,6 +30,8 @@ interface State {
   /** tab being dragged from the tab bar (drives the drop-zone overlay) */
   draggingTabId?: string
   update: UpdateState
+  /** git status per space root */
+  git: Record<string, GitStatus>
 
   init(): Promise<void>
   addSpace(root: string, name?: string): Space
@@ -50,6 +52,10 @@ interface State {
   resizeSplit(spaceId: string, splitId: string, ratio: number): void
   detachTab(tabId: string, at?: { x: number; y: number }): void
   dockTab(tabId: string): void
+  /** re-read git status for a space folder (debounced) */
+  refreshGit(root: string): void
+  /** open (or focus) the code review tab of the active space */
+  openChanges(): void
   openFile(path: string, serverId?: string): void
   newAgent(agentId?: string): void
   newTerminal(): void
@@ -61,6 +67,7 @@ interface State {
 }
 
 let persistTimer: number | undefined
+const gitTimers = new Map<string, ReturnType<typeof setTimeout>>()
 /** detached windows render a single tab and must never overwrite the saved spaces */
 let persistEnabled = true
 export function disablePersistence(): void {
@@ -141,6 +148,7 @@ export const useStore = create<State>((set, get) => {
     settingsOpen: false,
     detached: {},
     update: { status: 'idle' },
+    git: {},
 
     async init() {
       // optional: a renderer hot-reloaded onto an older main process doesn't have it yet
@@ -154,7 +162,11 @@ export const useStore = create<State>((set, get) => {
         window.orbit.getActivity()
       ])
       set({ info, spaces: spaces.map(normalizeSpace), activeSpaceId: activeSpaceId ?? spaces[0]?.id, servers, agents, statuses, activity, ready: true })
-      for (const s of spaces) window.orbit.fsWatch(s.root)
+      for (const s of spaces) {
+        window.orbit.fsWatch(s.root)
+        window.orbit.git?.watch(s.root)
+        get().refreshGit(s.root)
+      }
     },
 
     addSpace(root, name) {
@@ -167,6 +179,8 @@ export const useStore = create<State>((set, get) => {
       }
       mutateSpaces((s) => [...s, space], { activeSpaceId: space.id })
       window.orbit.fsWatch(root)
+      window.orbit.git?.watch(root)
+      get().refreshGit(root)
       return space
     },
 
@@ -326,6 +340,27 @@ export const useStore = create<State>((set, get) => {
           ),
         { activeSpaceId: space.id }
       )
+    },
+
+    refreshGit(root) {
+      clearTimeout(gitTimers.get(root))
+      gitTimers.set(
+        root,
+        setTimeout(() => {
+          window.orbit.git?.status(root).then(
+            (st) => set({ git: { ...get().git, [root]: st } }),
+            () => set({ git: { ...get().git, [root]: { isRepo: false, ahead: 0, behind: 0, files: [] } } })
+          )
+        }, 200)
+      )
+    },
+
+    openChanges() {
+      const space = activeSpace()
+      if (!space) return
+      const existing = space.tabs.find((t) => t.kind === 'changes')
+      if (existing) get().setActiveTab(existing.id)
+      else get().addTab({ kind: 'changes', title: 'Changes' })
     },
 
     openFile(path, serverId) {

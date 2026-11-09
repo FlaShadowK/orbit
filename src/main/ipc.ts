@@ -3,11 +3,12 @@ import { execFile } from 'child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { homedir, userInfo } from 'os'
 import { join } from 'path'
-import type { ServerInput, SessionSpec, Settings, Space } from '@shared/types'
+import type { GitChange, ServerInput, SessionSpec, Settings, Space } from '@shared/types'
 import { store } from './store'
 import * as ssh from './ssh'
 import { listAgents } from './agents'
-import { killSession, resizeSession, startSession, writeSession } from './sessions'
+import { foregroundProcesses, killSession, resizeSession, startSession, writeSession } from './sessions'
+import * as git from './git'
 import { listDir, readFile, watchRoot, writeFile } from './files'
 import { getActivity, getStatuses, setTabTitle } from './events'
 import { mcpEndpoint } from './mcp'
@@ -69,6 +70,7 @@ export function registerIpc(): void {
   ipcMain.on('term:write', (_e, id: string, data: string) => writeSession(id, data))
   ipcMain.on('term:resize', (_e, id: string, cols: number, rows: number) => resizeSession(id, cols, rows))
   h('term:kill', (_e, id: string) => killSession(id))
+  h('term:foreground', (_e, ids: string[]) => foregroundProcesses(ids))
   // save a pasted image to a temp file so it can be pasted as a path
   h('clipboard:saveImage', (_e, bytes: Uint8Array, mime: string) => {
     const ext = (mime.split('/')[1] ?? 'png').replace('jpeg', 'jpg').replace(/[^a-z0-9]/gi, '') || 'png'
@@ -131,6 +133,17 @@ export function registerIpc(): void {
   h('sftp:list', (_e, id: string, p: string) => ssh.sftpList(id, p))
   h('sftp:read', (_e, id: string, p: string) => ssh.sftpRead(id, p))
   h('sftp:write', (_e, id: string, p: string, c: string) => ssh.sftpWrite(id, p, c))
+
+  // git
+  h('git:status', (_e, cwd: string) => git.status(cwd))
+  h('git:branches', (_e, cwd: string) => git.branches(cwd))
+  h('git:fileVersions', (_e, cwd: string, change: GitChange) => git.fileVersions(cwd, change))
+  h('git:commit', (_e, cwd: string, message: string, paths: string[]) => git.commit(cwd, message, paths))
+  h('git:pull', (_e, cwd: string) => git.pull(cwd))
+  h('git:push', (_e, cwd: string) => git.push(cwd))
+  h('git:checkout', (_e, cwd: string, branch: string, create: boolean) => git.checkout(cwd, branch, create))
+  h('git:init', (_e, cwd: string) => git.init(cwd))
+  h('git:watch', (_e, cwd: string) => git.watch(cwd))
 
   // windows
   h('window:detach', (_e, req: DetachRequest) => detachTab(req))

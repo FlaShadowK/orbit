@@ -28,7 +28,8 @@ export const TAB_ICON: Record<Tab['kind'], string> = {
   terminal: 'terminal',
   ssh: 'server',
   editor: 'file',
-  sftp: 'files'
+  sftp: 'files',
+  changes: 'diff'
 }
 
 export function TabBar({ space }: { space: Space }) {

@@ -38,6 +38,10 @@ function useMainEvents(): void {
           break
         case 'fs':
           if (e.event === 'change') reloadIfClean(e.path)
+          st().refreshGit(e.root)
+          break
+        case 'git':
+          st().refreshGit(e.root)
           break
         case 'openTab':
           st().addTab(e.tab, e.spaceId, { background: false })
