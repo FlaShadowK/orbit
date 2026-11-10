@@ -169,7 +169,6 @@ After about 15 minutes the installers appear under **Releases**. To test a build
 - The MCP server listens on `127.0.0.1` only and requires the bearer token stored in the app settings.
 - Orbit doesn't gate the commands agents run on servers. Agents rely on their own permission or auto-mode checks, and everything they run is logged in **Activity**.
 - SSH host keys are currently accepted without verification (no `known_hosts` check yet).
-- Windows builds will be signed through SignPath Foundation's free open-source program; see the [code signing policy](CODE_SIGNING_POLICY.md) for who signs and what Orbit connects to.
 
 ---
 
