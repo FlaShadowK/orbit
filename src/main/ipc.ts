@@ -1,13 +1,13 @@
 import { app, dialog, ipcMain, shell, BrowserWindow } from 'electron'
 import { execFile } from 'child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { homedir, userInfo } from 'os'
-import { join } from 'path'
+import { extname, join } from 'path'
 import type { GitChange, ServerInput, SessionSpec, Settings, Space, StatRange } from '@shared/types'
 import { store } from './store'
 import * as ssh from './ssh'
 import { listAgents } from './agents'
-import { foregroundProcesses, killSession, resizeSession, startSession, writeSession } from './sessions'
+import { foregroundProcesses, killSession, resizeSession, runningAgents, startSession, writeSession } from './sessions'
 import * as git from './git'
 import * as beszel from './beszel'
 import { listDir, readFile, watchRoot, writeFile } from './files'
@@ -18,6 +18,11 @@ import { shellEnv, which } from './shellEnv'
 import { isSafeExternalUrl } from './links'
 import { closeDetached, detachTab, focusDetached, mainWindow, type DetachRequest } from './windows'
 import { checkForUpdates, installUpdate, rescheduleUpdates, updateState } from './updater'
+
+const IMAGE_MIME: Record<string, string> = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+  '.webp': 'image/webp', '.svg': 'image/svg+xml', '.avif': 'image/avif', '.ico': 'image/x-icon'
+}
 
 export function registerIpc(): void {
   const h = ipcMain.handle.bind(ipcMain)
@@ -64,6 +69,7 @@ export function registerIpc(): void {
   // agents & status
   h('agents:list', () => listAgents())
   h('status:get', () => getStatuses())
+  h('agents:running', () => runningAgents())
   h('tab:title', (_e, tabId: string, title: string) => setTabTitle(tabId, title))
 
   // terminal sessions
@@ -85,6 +91,12 @@ export function registerIpc(): void {
   // local files
   h('fs:list', (_e, dir: string) => listDir(dir))
   h('fs:read', (_e, p: string) => readFile(p))
+  // images shown in the markdown preview (the renderer can't load file: URLs)
+  h('fs:image', (_e, p: string) => {
+    const mime = IMAGE_MIME[extname(p).toLowerCase()]
+    if (!mime || !existsSync(p) || statSync(p).size > 15 * 1024 * 1024) return null
+    return `data:${mime};base64,${readFileSync(p).toString('base64')}`
+  })
   h('fs:write', (_e, p: string, c: string) => writeFile(p, c))
   h('fs:watch', (_e, root: string) => watchRoot(root))
 

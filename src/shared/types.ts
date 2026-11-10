@@ -22,6 +22,8 @@ export interface Tab {
   filePath?: string
   /** sftp browser cwd */
   cwd?: string
+  /** markdown editor tabs: rendered preview, source, or both side by side */
+  mdMode?: 'preview' | 'edit' | 'split'
 }
 
 export interface Space {
@@ -138,10 +140,23 @@ export interface ServerInput extends Omit<Server, 'id'> {
   secret?: ServerSecret
 }
 
+/** The agent CLIs Orbit knows how to wire up (MCP, status hooks, session resume). */
+export type AgentBase = 'claude' | 'codex' | 'gemini' | 'opencode' | 'other'
+
+/** A user command that starts an agent, e.g. a shell alias `claude-work`. */
+export interface AgentAlias {
+  id: string
+  label: string
+  /** command line typed into the shell; shell aliases and functions work */
+  command: string
+  base: AgentBase
+}
+
 export interface Settings {
   shell?: string
   fontSize: number
   agentCommands: Record<string, string>
+  agentAliases?: AgentAlias[]
   defaultAgent: string
   mcpToken?: string
   /** check GitHub releases on startup and every few hours (default on) */
@@ -164,6 +179,10 @@ export interface AgentInfo {
   label: string
   command: string
   available: boolean
+  /** which agent CLI this launches (aliases point at one of the built-ins) */
+  base: AgentBase
+  /** user-defined alias (shown with an edit/remove control) */
+  alias?: boolean
 }
 
 export interface SessionSpec {
@@ -226,6 +245,8 @@ export type MainEvent =
   | { type: 'status'; tabId: string; status: AgentStatus }
   | { type: 'agentStarted'; tabId: string }
   | { type: 'agentActivity'; tabId: string; activity: AgentActivity }
+  /** an agent CLI started (or stopped: agent = null) inside a terminal, however it was launched */
+  | { type: 'agentDetected'; tabId: string; agent: AgentBase | null }
   | { type: 'activity'; entry: ActivityEntry }
   | { type: 'fs'; root: string; path: string; event: string }
   | { type: 'openTab'; spaceId?: string; tab: Tab }

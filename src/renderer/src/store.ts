@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ActivityEntry, AgentActivity, AgentInfo, AgentStatus, GitStatus, OrbitInfo, Server, Space, Tab, UpdateState } from '@shared/types'
+import type { ActivityEntry, AgentActivity, AgentBase, AgentInfo, AgentStatus, GitStatus, OrbitInfo, Server, Space, Tab, UpdateState } from '@shared/types'
 import { basename, IS_MAC, SPACE_COLORS, uid } from './lib/util'
 import { keyLabel } from '@shared/keys'
 import { hasTab, leaf, leafCount, placeTab as placeInLayout, prune, removeTab, replaceTab, setRatio, tabsIn, type DropSide } from '@shared/layout'
@@ -14,8 +14,10 @@ interface State {
   servers: Server[]
   agents: AgentInfo[]
   statuses: Record<string, AgentStatus>
-  /** what a working agent is doing right now (orbit speed) */
+  /** what a working agent is doing right now */
   activities: Record<string, AgentActivity>
+  /** agent CLI running in a terminal tab, whether started by a button or typed */
+  running: Record<string, AgentBase>
   activity: ActivityEntry[]
   dirty: Record<string, boolean>
   /** tab ids whose session has been started at least once in this renderer */
@@ -140,6 +142,7 @@ export const useStore = create<State>((set, get) => {
     servers: [],
     agents: [],
     statuses: {},
+    running: {},
     activities: {},
     activity: [],
     dirty: {},
@@ -164,6 +167,7 @@ export const useStore = create<State>((set, get) => {
         window.orbit.getActivity()
       ])
       set({ info, spaces: spaces.map(normalizeSpace), activeSpaceId: activeSpaceId ?? spaces[0]?.id, servers, agents, statuses, activity, ready: true })
+      window.orbit.runningAgents?.().then((running) => set({ running }), () => {})
       for (const s of spaces) {
         window.orbit.fsWatch(s.root)
         window.orbit.git?.watch(s.root)
@@ -376,7 +380,7 @@ export const useStore = create<State>((set, get) => {
     newAgent(agentId) {
       const id = agentId ?? get().agents.find((a) => a.available)?.id ?? 'claude'
       const agent = get().agents.find((a) => a.id === id)
-      get().addTab({ kind: 'agent', agent: id, title: agent?.label ?? id, agentSessionId: id === 'claude' ? uid() : undefined })
+      get().addTab({ kind: 'agent', agent: id, title: agent?.label ?? id, agentSessionId: agent?.base === 'claude' || id === 'claude' ? uid() : undefined })
     },
 
     newTerminal() {
@@ -417,8 +421,18 @@ export function spaceActivity(space: Space, statuses: Record<string, AgentStatus
   return acts.includes('streaming') ? 'streaming' : acts.includes('thinking') ? 'thinking' : acts[0]
 }
 
-export function spaceStatus(space: Space, statuses: Record<string, AgentStatus>): AgentStatus | undefined {
-  const st = space.tabs.filter((t) => t.kind === 'agent').map((t) => statuses[t.id])
+/** An agent tab: opened from an agent button, or a terminal with an agent CLI running in it. */
+export const isAgentTab = (t: Tab, running: Record<string, AgentBase>): boolean => t.kind === 'agent' || !!running[t.id]
+
+/** Which agent CLI a tab runs right now, if known. */
+export function tabAgent(t: Tab, running: Record<string, AgentBase>, agents: AgentInfo[]): AgentBase | undefined {
+  if (running[t.id]) return running[t.id]
+  if (t.kind !== 'agent') return undefined
+  return agents.find((a) => a.id === t.agent)?.base ?? (t.agent as AgentBase | undefined)
+}
+
+export function spaceStatus(space: Space, statuses: Record<string, AgentStatus>, running: Record<string, AgentBase> = {}): AgentStatus | undefined {
+  const st = space.tabs.filter((t) => isAgentTab(t, running)).map((t) => statuses[t.id])
   if (st.includes('waiting')) return 'waiting'
   if (st.includes('working')) return 'working'
   if (st.includes('done')) return 'done'

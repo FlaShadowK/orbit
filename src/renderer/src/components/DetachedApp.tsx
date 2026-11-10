@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { disablePersistence, useStore } from '@/store'
+import { disablePersistence, isAgentTab, useStore } from '@/store'
 import { Icon } from './Icon'
 import { StatusDot } from './StatusDot'
 import { TAB_ICON } from './TabBar'
@@ -19,6 +19,7 @@ export function DetachedApp({ tabId, spaceId }: { tabId: string; spaceId: string
   const space = useStore((s) => s.spaces.find((x) => x.id === spaceId))
   const status = useStore((s) => s.statuses[tabId])
   const activity = useStore((s) => s.activities[tabId])
+  const running = useStore((s) => s.running)
   const platform = useStore((s) => s.info?.platform)
   const tab = space?.tabs.find((t) => t.id === tabId)
 
@@ -31,6 +32,12 @@ export function DetachedApp({ tabId, spaceId }: { tabId: string; spaceId: string
       if (e.type === 'status') st().set({ statuses: { ...st().statuses, [e.tabId]: e.status } })
       if (e.type === 'agentActivity') st().set({ activities: { ...st().activities, [e.tabId]: e.activity } })
       if (e.type === 'servers') st().set({ servers: e.servers })
+      if (e.type === 'agentDetected') {
+        const next = { ...st().running }
+        if (e.agent) next[e.tabId] = e.agent
+        else delete next[e.tabId]
+        st().set({ running: next })
+      }
     })
     const offCmd = window.orbit.onCommand((cmd) => {
       const t = st().spaces.find((x) => x.id === spaceId)?.tabs.find((x) => x.id === tabId)
@@ -58,10 +65,10 @@ export function DetachedApp({ tabId, spaceId }: { tabId: string; spaceId: string
   return (
     <div className={`detached-app platform-${platform}`}>
       <div className="detached-bar drag">
-        <span className="tab-icon"><Icon name={TAB_ICON[tab.kind]} size={13} /></span>
+        <span className="tab-icon"><Icon name={isAgentTab(tab, running) ? 'agent' : TAB_ICON[tab.kind]} size={13} /></span>
         <span className="detached-title">{tab.title}</span>
         <span className="muted small">· {space.name}</span>
-        {tab.kind === 'agent' && <StatusDot status={status} activity={activity} />}
+        {isAgentTab(tab, running) && <StatusDot status={status} activity={activity} />}
         <button className="btn ghost small no-drag dock-btn" title="Move back to the main window" onClick={() => window.close()}>
           <Icon name="dock" size={13} /> Dock
         </button>

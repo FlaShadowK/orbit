@@ -39,7 +39,9 @@ Coding agents are good at writing code. Shipping it still means juggling a termi
 ### 🌌 Spaces & agent tabs
 - **One space per project folder**, each with its own tabs (agents, terminals, SSH, editors, SFTP). Layouts are saved and restored.
 - **Agent tabs** for Claude Code, Codex, Gemini CLI, opencode, or any custom command (Settings).
-- **Animated status**: a planet orbits while the agent works, **Needs you!** when it waits for input, and a pulse when it's done. You also get a desktop notification when an agent needs you.
+- **Your own aliases**: add commands like `claude-work` or `claude-personal` from a space's start page. Shell aliases and functions work, and Orbit still adds its MCP server and status hooks.
+- **Detected wherever they start**: run `claude`, `codex`, `gemini` or an alias in any terminal tab and it becomes an agent tab automatically.
+- **Quiet status dot**: it breathes while the agent works, turns amber with **Needs you** when the agent waits for input, and turns green when the agent is done. You also get a desktop notification when an agent needs you.
 - **Claude tabs are wired up for you**: the Orbit MCP server (`--mcp-config`) and status hooks (`--settings`) are injected, and each tab resumes its own conversation after a restart (`--session-id` / `--resume`).
 
 ### 🖥️ Terminal
@@ -51,6 +53,7 @@ Coding agents are good at writing code. Shipping it still means juggling a termi
 ### 📝 Editor
 - **Monaco**, the editor behind VS Code. Files reload live when an agent changes them on disk.
 - Remote files open over SFTP and save back with ⌘S.
+- **Markdown preview**: `.md` files open rendered, with **Edit · Split · Preview** modes, live updates, highlighted code blocks and local images.
 
 ### 🌿 Git panel & review tab
 - Branch switcher, plus **Review · Pull · Commit · Push** in one row.

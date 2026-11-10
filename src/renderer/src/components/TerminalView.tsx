@@ -6,7 +6,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import type { Space, Tab } from '@shared/types'
 import { subscribeTerm } from '@/lib/term'
-import { useStore } from '@/store'
+import { tabAgent, useStore } from '@/store'
 import { isAppShortcut, spaceIndexShortcut, tabIndexShortcut } from '@shared/keys'
 
 const IS_MAC = navigator.platform.toLowerCase().includes('mac')
@@ -253,7 +253,8 @@ export function TerminalView({ tab, space, visible, focused }: Props) {
       e.preventDefault()
       e.stopImmediatePropagation()
       const t = tabRef.current
-      if (t.kind === 'agent' && t.agent === 'claude') {
+      const { running, agents } = useStore.getState()
+      if (tabAgent(t, running, agents) === 'claude') {
         // Claude Code reads the image from the system clipboard on Ctrl+V
         send('\x16')
         return

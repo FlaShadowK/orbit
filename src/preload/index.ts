@@ -21,6 +21,7 @@ const api: OrbitApi = {
 
   listAgents: inv('agents:list') as OrbitApi['listAgents'],
   getStatuses: inv('status:get') as OrbitApi['getStatuses'],
+  runningAgents: inv('agents:running') as OrbitApi['runningAgents'],
   setTabTitle: inv('tab:title') as OrbitApi['setTabTitle'],
 
   termStart: inv('term:start') as OrbitApi['termStart'],
@@ -35,6 +36,7 @@ const api: OrbitApi = {
 
   fsList: inv('fs:list') as OrbitApi['fsList'],
   fsRead: inv('fs:read') as OrbitApi['fsRead'],
+  fsImage: inv('fs:image') as OrbitApi['fsImage'],
   fsWrite: inv('fs:write') as OrbitApi['fsWrite'],
   fsWatch: inv('fs:watch') as OrbitApi['fsWatch'],
 

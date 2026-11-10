@@ -3,6 +3,16 @@ import type { Tab } from '@shared/types'
 import { monaco, modelUri } from '@/lib/monaco'
 import { langFor } from '@/lib/util'
 import { useStore } from '@/store'
+import { MarkdownPreview } from './MarkdownPreview'
+
+type MdMode = NonNullable<Tab['mdMode']>
+const MD_MODES: { id: MdMode; label: string }[] = [
+  { id: 'edit', label: 'Edit' },
+  { id: 'split', label: 'Split' },
+  { id: 'preview', label: 'Preview' }
+]
+
+export const isMarkdown = (path?: string): boolean => !!path && /\.(md|markdown|mdx)$/i.test(path)
 
 /** last saved content per model uri — used for dirty tracking and external reloads */
 const savedContent = new Map<string, string>()
@@ -53,6 +63,9 @@ export function EditorView({ tab, focused }: { tab: Tab; focused: boolean }) {
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const markdown = isMarkdown(tab.filePath)
+  const mode: MdMode = markdown ? (tab.mdMode ?? 'preview') : 'edit'
+  const [mdSource, setMdSource] = useState('')
 
   useEffect(() => {
     let disposed = false
@@ -70,7 +83,9 @@ export function EditorView({ tab, focused }: { tab: Tab; focused: boolean }) {
       scrollBeyondLastLine: false,
       padding: { top: 10 },
       bracketPairColorization: { enabled: true },
-      renderWhitespace: 'selection'
+      renderWhitespace: 'selection',
+      // prose reads better wrapped, and a wrapped editor never opens scrolled sideways in split view
+      wordWrap: markdown ? 'on' : 'off'
     })
     editorRef.current = editor
     // ⌘S is handled by the app menu → saveTab()
@@ -78,9 +93,20 @@ export function EditorView({ tab, focused }: { tab: Tab; focused: boolean }) {
     const attach = (model: monaco.editor.ITextModel): void => {
       editor.setModel(model)
       setLoading(false)
-      const sub = model.onDidChangeContent(() => useStore.getState().setDirty(tab.id, model.getValue() !== savedContent.get(key)))
-      editor.onDidDispose(() => sub.dispose())
-      if (focused) editor.focus()
+      let previewTimer: ReturnType<typeof setTimeout> | undefined
+      if (markdown) setMdSource(model.getValue())
+      const sub = model.onDidChangeContent(() => {
+        useStore.getState().setDirty(tab.id, model.getValue() !== savedContent.get(key))
+        if (markdown) {
+          clearTimeout(previewTimer)
+          previewTimer = setTimeout(() => setMdSource(model.getValue()), 120)
+        }
+      })
+      editor.onDidDispose(() => {
+        sub.dispose()
+        clearTimeout(previewTimer)
+      })
+      if (focused && (!markdown || (tab.mdMode ?? 'preview') !== 'preview')) editor.focus()
     }
 
     const existing = monaco.editor.getModel(uri)
@@ -107,14 +133,46 @@ export function EditorView({ tab, focused }: { tab: Tab; focused: boolean }) {
   }, [tab.id])
 
   useEffect(() => {
-    if (focused) editorRef.current?.focus()
-  }, [focused])
+    if (focused && mode !== 'preview') editorRef.current?.focus()
+  }, [focused, mode])
+
+  // the editor was measured while hidden (preview mode): re-measure once it is shown again
+  useEffect(() => {
+    if (!markdown || mode === 'preview') return
+    const raf = requestAnimationFrame(() => {
+      editorRef.current?.layout()
+      editorRef.current?.setScrollLeft(0)
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [markdown, mode])
 
   return (
-    <div className="editor-wrap">
-      {error && <div className="pane-message error">{error}</div>}
-      {loading && !error && <div className="pane-message">Loading…</div>}
-      <div className="editor-host" ref={host} style={{ visibility: error ? 'hidden' : 'visible' }} />
+    <div className={`editor-wrap ${markdown ? `md mdm-${mode}` : ''}`}>
+      {markdown && (
+        <div className="md-toolbar">
+          <div className="segmented" role="tablist">
+            {MD_MODES.map((m) => (
+              <button
+                key={m.id}
+                role="tab"
+                aria-selected={mode === m.id}
+                className={mode === m.id ? 'on' : ''}
+                onClick={() => useStore.getState().updateTab(tab.id, { mdMode: m.id })}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="editor-body">
+        {error && <div className="pane-message error">{error}</div>}
+        {loading && !error && <div className="pane-message">Loading…</div>}
+        <div className="editor-host" ref={host} style={{ visibility: error ? 'hidden' : 'visible' }} />
+        {markdown && mode !== 'edit' && !error && !loading && (
+          <MarkdownPreview source={mdSource} filePath={tab.filePath!} serverId={tab.serverId} />
+        )}
+      </div>
     </div>
   )
 }

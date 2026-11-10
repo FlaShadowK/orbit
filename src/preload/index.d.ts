@@ -1,5 +1,5 @@
 import type {
-  ActivityEntry, AgentInfo, AgentStatus, DirEntry, MainEvent, OrbitInfo, Server, ServerInput,
+  ActivityEntry, AgentBase, AgentInfo, AgentStatus, DirEntry, MainEvent, OrbitInfo, Server, ServerInput,
   SessionSpec, Settings, Space, UpdateState, GitChange, GitStatus, BeszelSnapshot, BeszelSystemRef, StatRange
 } from '../shared/types'
 
@@ -16,6 +16,8 @@ export interface OrbitApi {
 
   listAgents(): Promise<AgentInfo[]>
   getStatuses(): Promise<Record<string, AgentStatus>>
+  /** the agent CLI running in each terminal, however it was started */
+  runningAgents(): Promise<Record<string, AgentBase>>
   setTabTitle(tabId: string, title: string): Promise<void>
 
   termStart(spec: SessionSpec): Promise<{ replay?: string }>
@@ -31,6 +33,8 @@ export interface OrbitApi {
 
   fsList(dir: string): Promise<DirEntry[]>
   fsRead(path: string): Promise<string>
+  /** a local image as a data: URL (null if missing, too big or not an image) */
+  fsImage(path: string): Promise<string | null>
   fsWrite(path: string, content: string): Promise<void>
   fsWatch(root: string): Promise<void>
 

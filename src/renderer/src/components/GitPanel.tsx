@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Space } from '@shared/types'
-import { useStore } from '@/store'
+import { isAgentTab, useStore } from '@/store'
 import { Icon } from './Icon'
 
 /**
@@ -9,9 +9,10 @@ import { Icon } from './Icon'
  */
 export function useBranchLock(space: Space): string | null {
   const statuses = useStore((s) => s.statuses)
+  const running = useStore((s) => s.running)
   const [busy, setBusy] = useState<string | null>(null)
 
-  const agent = space.tabs.find((t) => t.kind === 'agent' && statuses[t.id] === 'working')
+  const agent = space.tabs.find((t) => isAgentTab(t, running) && statuses[t.id] === 'working')
   const terminals = space.tabs.filter((t) => t.kind === 'terminal' || t.kind === 'agent')
 
   useEffect(() => {

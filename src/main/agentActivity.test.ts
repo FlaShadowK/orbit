@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ActivityTracker, classifyChunk } from './agentActivity'
+import { ActivityTracker, StatusGuesser, classifyChunk } from './agentActivity'
 
 describe('classifyChunk', () => {
   it('treats the redrawing spinner line as thinking, not output', () => {
@@ -37,5 +37,31 @@ describe('ActivityTracker', () => {
     t.feed('some output\r\n', 1000)
     expect(t.current(1100)).toBe('deep')
     expect(t.current(6000)).toBe('thinking')
+  })
+})
+
+describe('StatusGuesser', () => {
+  it('follows the busy line, permission prompts and the end of a turn', () => {
+    const g = new StatusGuesser()
+    expect(g.current(0)).toBeNull()
+    g.feed('\x1b[2K✻ Pondering… (3s · esc to interrupt)', 100)
+    expect(g.current(200)).toBe('working')
+    g.feed('Do you want to make this edit to app.ts?\n❯ 1. Yes', 1000)
+    expect(g.current(1100)).toBe('waiting')
+    g.feed('✻ Writing… (9s · esc to interrupt)', 5000)
+    expect(g.current(5100)).toBe('working')
+    g.feed('Done, all tests pass.', 5200)
+    expect(g.current(9000)).toBe('done')
+  })
+
+  it('stays working while a redrawn timer keeps ticking without the marker', () => {
+    const g = new StatusGuesser()
+    g.feed('Working (0s • esc to interrupt)', 0)
+    expect(g.current(100)).toBe('working')
+    for (let t = 1000; t <= 6000; t += 1000) {
+      g.feed(`${t / 1000}s`, t)
+      expect(g.current(t + 100)).toBe('working')
+    }
+    expect(g.current(9000)).toBe('done')
   })
 })

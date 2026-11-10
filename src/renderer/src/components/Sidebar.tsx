@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { spaceActivity, spaceStatus, useStore } from '@/store'
+import { isAgentTab, spaceActivity, spaceStatus, useStore } from '@/store'
 import { Icon } from './Icon'
 import { StatusDot } from './StatusDot'
 import { ServerStats } from './ServerStats'
@@ -12,7 +12,7 @@ export async function createSpaceFromPicker(): Promise<void> {
 }
 
 export function Sidebar() {
-  const { spaces, activeSpaceId, statuses, activities, servers, setActiveSpace, removeSpace, updateSpace, openSsh, openSftp, set } = useStore()
+  const { spaces, activeSpaceId, statuses, activities, running, servers, setActiveSpace, removeSpace, updateSpace, openSsh, openSftp, set } = useStore()
   const [renaming, setRenaming] = useState<string | null>(null)
   const [menu, setMenu] = useState<string | null>(null)
 
@@ -38,8 +38,8 @@ export function Sidebar() {
           </button>
         )}
         {spaces.map((s, i) => {
-          const st = spaceStatus(s, statuses)
-          const agents = s.tabs.filter((t) => t.kind === 'agent').length
+          const st = spaceStatus(s, statuses, running)
+          const agents = s.tabs.filter((t) => isAgentTab(t, running)).length
           return (
             <div
               key={s.id}

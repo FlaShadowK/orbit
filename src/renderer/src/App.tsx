@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
-import type { Space, Tab } from '@shared/types'
+import { useEffect, useState } from 'react'
+import type { AgentInfo, Space, Tab } from '@shared/types'
 import { selectActiveSpace, useStore } from './store'
 import { Sidebar, createSpaceFromPicker } from './components/Sidebar'
 import { TabBar, closeTabWithCleanup } from './components/TabBar'
@@ -13,6 +13,7 @@ import { ActivityPanel } from './components/ActivityPanel'
 import { SettingsModal } from './components/SettingsModal'
 import { StatsEditor } from './components/ServerStats'
 import { Icon } from './components/Icon'
+import { AliasForm, removeAlias } from './components/AgentAliases'
 import { keyLabel, spaceIndexShortcut, tabIndexShortcut } from '@shared/keys'
 import { IS_MAC } from './lib/util'
 
@@ -31,6 +32,13 @@ function useMainEvents(): void {
         case 'agentActivity':
           st().set({ activities: { ...st().activities, [e.tabId]: e.activity } })
           break
+        case 'agentDetected': {
+          const running = { ...st().running }
+          if (e.agent) running[e.tabId] = e.agent
+          else delete running[e.tabId]
+          st().set({ running })
+          break
+        }
         case 'agentStarted':
           st().updateTab(e.tabId, { agentStarted: true })
           break
@@ -148,7 +156,8 @@ function useMainEvents(): void {
 }
 
 function Welcome({ space }: { space?: Space }) {
-  const { agents, newAgent, newTerminal, servers, openSsh, set } = useStore()
+  const { agents, newAgent, newTerminal } = useStore()
+  const [editing, setEditing] = useState<AgentInfo | 'new' | null>(null)
   if (!space)
     return (
       <div className="welcome">
@@ -163,34 +172,45 @@ function Welcome({ space }: { space?: Space }) {
     <div className="welcome">
       <h2>{space.name}</h2>
       <p className="muted small">{space.root}</p>
-      <div className="welcome-grid">
-        {agents.filter((a) => a.available).map((a) => (
-          <button key={a.id} className="welcome-card" onClick={() => newAgent(a.id)}>
-            <Icon name="agent" size={20} />
-            <span>{a.label}</span>
-            <small>agent tab with Orbit MCP</small>
+      {editing ? (
+        <AliasForm alias={editing === 'new' ? undefined : editing} onDone={() => setEditing(null)} />
+      ) : (
+        <div className="welcome-grid">
+          {agents.filter((a) => a.available).map((a) => (
+            <div key={a.id} className="welcome-card-wrap">
+              <button className="welcome-card" onClick={() => newAgent(a.id)} title={a.command}>
+                <Icon name="agent" size={20} />
+                <span>{a.label}</span>
+                <small>{a.alias ? a.command : 'agent tab with Orbit MCP'}</small>
+              </button>
+              {a.alias && (
+                <div className="card-tools">
+                  <button className="icon-btn" title="Edit alias" onClick={() => setEditing(a)}>
+                    <Icon name="edit" size={12} />
+                  </button>
+                  <button
+                    className="icon-btn"
+                    title="Remove alias"
+                    onClick={() => confirm(`Remove "${a.label}"?`) && removeAlias(a.id)}
+                  >
+                    <Icon name="x" size={12} />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+          <button className="welcome-card" onClick={newTerminal}>
+            <Icon name="terminal" size={20} />
+            <span>Terminal</span>
+            <small>shell in project root</small>
           </button>
-        ))}
-        <button className="welcome-card" onClick={newTerminal}>
-          <Icon name="terminal" size={20} />
-          <span>Terminal</span>
-          <small>shell in project root</small>
-        </button>
-        {servers.slice(0, 4).map((s) => (
-          <button key={s.id} className="welcome-card" onClick={() => openSsh(s)}>
-            <Icon name="server" size={20} />
-            <span>{s.name}</span>
-            <small>{s.username}@{s.host}</small>
-          </button>
-        ))}
-        {servers.length === 0 && (
-          <button className="welcome-card" onClick={() => set({ serverModal: { mode: 'new' } })}>
+          <button className="welcome-card dashed" onClick={() => setEditing('new')}>
             <Icon name="plus" size={20} />
-            <span>Add server</span>
-            <small>SSH + agent access</small>
+            <span>Add alias</span>
+            <small>e.g. claude-work</small>
           </button>
-        )}
-      </div>
+        </div>
+      )}
       <p className="muted small">
         {keyLabel('newAgent', IS_MAC)} agent · {keyLabel('newTerminal', IS_MAC)} terminal · {keyLabel('palette', IS_MAC)} commands ·{' '}
         {keyLabel('splitRow', IS_MAC)} split · {keyLabel('toggleFiles', IS_MAC)} files

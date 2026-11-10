@@ -45,3 +45,45 @@ export class ActivityTracker {
     return 'thinking'
   }
 }
+
+/** "esc to interrupt" (Claude Code, Codex), "esc to cancel" (Gemini CLI): shown only while the agent works */
+const BUSY = /esc (?:to )?(?:interrupt|cancel)/i
+/** permission / confirmation prompts */
+const ASK = /Do you want to|Would you like to (?:run|make|proceed)|Allow (?:command|execution|this)|\[y\/n\]|\(y\/n\)/i
+const BUSY_HOLD_MS = 1500
+
+export type GuessedStatus = 'working' | 'waiting' | 'done'
+
+/**
+ * Agent status for agents Orbit can't hook into (started by typing a command, or CLIs
+ * without hooks), read from what they print: their "esc to interrupt" line means working,
+ * a permission prompt means waiting, and the line going away means the turn finished.
+ */
+export class StatusGuesser {
+  private busyAt = -Infinity
+  private askAt = -Infinity
+  private outputAt = -Infinity
+  private working = false
+
+  feed(raw: string, now = Date.now()): void {
+    const text = stripAnsi(raw)
+    if (!text.trim()) return
+    this.outputAt = now
+    if (BUSY.test(text)) this.busyAt = now
+    if (ASK.test(text)) this.askAt = now
+  }
+
+  /** null until the agent has shown any sign of working */
+  current(now = Date.now()): GuessedStatus | null {
+    const asked = this.askAt >= this.busyAt && this.askAt > -Infinity
+    // TUIs that redraw only changed cells won't resend the marker, but keep ticking a timer
+    const busy = now - this.busyAt < BUSY_HOLD_MS || (this.working && !asked && now - this.outputAt < BUSY_HOLD_MS)
+    if (busy && !asked) {
+      this.working = true
+      return 'working'
+    }
+    this.working = false
+    if (this.busyAt === -Infinity) return asked ? 'waiting' : null
+    return asked ? 'waiting' : 'done'
+  }
+}

@@ -3,12 +3,13 @@ import type { ClientChannel } from 'ssh2'
 import { existsSync } from 'fs'
 import { homedir } from 'os'
 import { basename } from 'path'
-import type { SessionSpec } from '@shared/types'
-import { agentLaunch } from './agents'
+import type { AgentBase, SessionSpec } from '@shared/types'
+import { agentLaunch, listAgents } from './agents'
 import { defaultShell, shellEnv } from './shellEnv'
 import { openShell } from './ssh'
-import { getStatus, send, setActivity, setStatus } from './events'
-import { ActivityTracker } from './agentActivity'
+import { clearStatus, emit, getStatus, send, setActivity, setStatus } from './events'
+import { ActivityTracker, StatusGuesser } from './agentActivity'
+import { agentUnder, listProcesses } from './agentDetect'
 import { store } from './store'
 
 const SCROLLBACK = 256 * 1024
@@ -20,8 +21,16 @@ interface Session {
   resize(cols: number, rows: number): void
   kill(): void
   buffer: string
+  /** started from an agent button (an agent tab) */
   agent: boolean
-  idleTimer?: NodeJS.Timeout
+  /** local shell pid, for finding agents started inside it */
+  pid?: number
+  /** the agent CLI currently running in this terminal, however it was started */
+  running?: AgentBase | null
+  /** status comes from Claude Code hooks Orbit injected, so output isn't used to guess it */
+  hooked?: boolean
+  /** guesses status from output for agents without hooks */
+  guesser?: StatusGuesser
   /** agents only: classifies output while working, polled to report activity changes */
   tracker?: ActivityTracker
   activityTimer?: NodeJS.Timeout
@@ -41,6 +50,7 @@ function onData(id: string, data: string): void {
     s.buffer += data
     if (s.buffer.length > SCROLLBACK) s.buffer = s.buffer.slice(-SCROLLBACK)
     s.tracker?.feed(data)
+    s.guesser?.feed(data)
   }
   send('term:data', id, data)
 }
@@ -48,6 +58,7 @@ function onData(id: string, data: string): void {
 function onExit(id: string, code: number | null): void {
   const s = sessions.get(id)
   if (s?.agent) setStatus(id, 'exited')
+  else if (s?.running) clearStatus(id)
   clearInterval(s?.activityTimer)
   sessions.delete(id)
   send('term:exit', id, code)
@@ -103,8 +114,10 @@ export async function startSession(spec: SessionSpec): Promise<{ replay?: string
       args = ['-NoLogo', '-NoExit', '-Command', `& ${[launch.file, ...launch.args].map(pq).join(' ')}`]
     } else {
       const q = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`
-      const cmd = [launch.file, ...launch.args].map(q).join(' ')
-      args = ['-lc', `${cmd}; echo; echo "\x1b[2m[agent exited — shell]\x1b[0m"; exec ${q(shell)} -l`]
+      // the user's command stays unquoted so shell aliases (claude-work) and VAR=x prefixes work
+      const extra = launch.args.slice(launch.command.split(/\s+/).length - 1)
+      const cmd = [launch.command, ...extra.map(q)].join(' ')
+      args = [launch.interactive ? '-ilc' : '-lc', `${cmd}; echo; echo "\x1b[2m[agent exited — shell]\x1b[0m"; exec ${q(shell)} -l`]
     }
   }
 
@@ -112,6 +125,7 @@ export async function startSession(spec: SessionSpec): Promise<{ replay?: string
   const session: Session = {
     buffer: '',
     agent: isAgent,
+    pid: proc.pid,
     foreground: () => {
       if (process.platform === 'win32') return null // node-pty can't see the foreground process on Windows
       const name = basename(proc.process || '').replace(/^-/, '')
@@ -129,23 +143,84 @@ export async function startSession(spec: SessionSpec): Promise<{ replay?: string
   }
   sessions.set(spec.id, session)
   if (isAgent) {
-    setStatus(spec.id, 'idle')
-    session.tracker = new ActivityTracker()
-    session.activityTimer = setInterval(() => {
-      if (getStatus(spec.id) === 'working') setActivity(spec.id, session.tracker!.current())
-    }, 250)
+    // `running` is filled in by the process scan once the CLI is up
+    session.hooked = listAgents().find((a) => a.id === spec.agent)?.base === 'claude'
+    startTracking(spec.id, session)
   }
-  proc.onData((d) => {
-    onData(spec.id, d)
-    // generic activity heuristic for agents without status hooks
-    if (isAgent && spec.agent !== 'claude') {
-      setStatus(spec.id, 'working')
-      clearTimeout(session.idleTimer)
-      session.idleTimer = setTimeout(() => setStatus(spec.id, 'waiting'), 2500)
-    }
-  })
+  proc.onData((d) => onData(spec.id, d))
   proc.onExit(({ exitCode }) => onExit(spec.id, exitCode))
+  ensureScanner()
   return {}
+}
+
+/** Status + activity reporting for a terminal that has an agent running in it. */
+function startTracking(id: string, s: Session): void {
+  setStatus(id, 'idle')
+  s.tracker = new ActivityTracker()
+  s.guesser = new StatusGuesser()
+  clearInterval(s.activityTimer)
+  s.activityTimer = setInterval(() => {
+    if (!s.hooked) {
+      const guess = s.guesser!.current()
+      if (guess) setStatus(id, guess)
+    }
+    if (getStatus(id) === 'working') setActivity(id, s.tracker!.current())
+  }, 250)
+}
+
+function stopTracking(id: string, s: Session): void {
+  clearInterval(s.activityTimer)
+  s.activityTimer = undefined
+  s.tracker = undefined
+  s.guesser = undefined
+  // hooks belonged to the agent Orbit launched; one typed later in the same tab has none
+  s.hooked = false
+  if (s.agent) setStatus(id, 'exited')
+  else clearStatus(id)
+}
+
+// ---- agents started by typing a command (`claude`, an alias…) are found by looking at the process tree
+const SCAN_MS = 1500
+let scanner: NodeJS.Timeout | undefined
+let scanning = false
+
+function ensureScanner(): void {
+  if (scanner || process.platform === 'win32') return
+  scanner = setInterval(scan, SCAN_MS)
+}
+
+async function scan(): Promise<void> {
+  const local = [...sessions.entries()].filter(([, s]) => s.pid)
+  if (!local.length) {
+    clearInterval(scanner)
+    scanner = undefined
+    return
+  }
+  if (scanning) return
+  scanning = true
+  try {
+    const procs = await listProcesses()
+    if (!procs.length) return
+    for (const [id, s] of local) {
+      if (sessions.get(id) !== s) continue
+      const found = agentUnder(s.pid!, procs)
+      if (found === (s.running ?? null)) continue
+      const was = s.running
+      s.running = found
+      emit({ type: 'agentDetected', tabId: id, agent: found })
+      if (found && !s.activityTimer) startTracking(id, s)
+      else if (!found && was) stopTracking(id, s)
+    }
+  } finally {
+    scanning = false
+  }
+}
+
+/** Agents running in each terminal right now (renderer reload). */
+export function runningAgents(): Record<string, AgentBase> {
+  const out: Record<string, AgentBase> = {}
+  for (const [id, s] of sessions) if (s.running) out[id] = s.running
+  return out
 }
 
 export function writeSession(id: string, data: string): void {
@@ -157,7 +232,6 @@ export function resizeSession(id: string, cols: number, rows: number): void {
 export function killSession(id: string): void {
   const s = sessions.get(id)
   if (!s) return
-  clearTimeout(s.idleTimer)
   clearInterval(s.activityTimer)
   s.kill()
   sessions.delete(id)

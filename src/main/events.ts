@@ -38,6 +38,14 @@ export function setStatus(tabId: string, status: AgentStatus): void {
   }
 }
 
+/** The terminal no longer runs an agent: forget its status. */
+export function clearStatus(tabId: string): void {
+  if (!statuses.has(tabId)) return
+  statuses.delete(tabId)
+  activities.delete(tabId)
+  emit({ type: 'status', tabId, status: 'idle' })
+}
+
 export function getStatus(tabId: string): AgentStatus | undefined {
   return statuses.get(tabId)
 }
