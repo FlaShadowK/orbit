@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow'
 import { useEffect, useState } from 'react'
 import type { Space } from '@shared/types'
 import { isAgentTab, useStore } from '@/store'
@@ -40,7 +41,7 @@ export function useBranchLock(space: Space): string | null {
 
 export function GitPanel({ space }: { space: Space }) {
   const st = useStore((s) => s.git[space.root])
-  const { openChanges, notify, refreshGit } = useStore()
+  const { openChanges, notify, refreshGit } = useStore(useShallow((s) => ({ openChanges: s.openChanges, notify: s.notify, refreshGit: s.refreshGit })))
   const lock = useBranchLock(space)
   const [running, setRunning] = useState<'pull' | 'push' | null>(null)
 
@@ -101,7 +102,7 @@ export function GitPanel({ space }: { space: Space }) {
 
 function BranchPicker({ space, lock }: { space: Space; lock: string | null }) {
   const st = useStore((s) => s.git[space.root])
-  const { notify, refreshGit } = useStore()
+  const { notify, refreshGit } = useStore(useShallow((s) => ({ notify: s.notify, refreshGit: s.refreshGit })))
   const [open, setOpen] = useState(false)
   const [list, setList] = useState<string[]>([])
   const [query, setQuery] = useState('')

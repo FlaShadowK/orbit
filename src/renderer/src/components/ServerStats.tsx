@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow'
 import { useEffect, useState } from 'react'
 import type { BeszelSnapshot, Server, StatMetric, StatRange, StatWidget, WidgetType } from '@shared/types'
 import { useStore } from '@/store'
@@ -79,7 +80,7 @@ const RANGES: StatRange[] = ['1h', '12h', '24h', '7d']
 export function StatsEditor() {
   const serverId = useStore((s) => s.statsEditor)
   const servers = useStore((s) => s.servers)
-  const { set, notify } = useStore()
+  const { set, notify } = useStore(useShallow((s) => ({ set: s.set, notify: s.notify })))
   const server = servers.find((s) => s.id === serverId)
   const [widgets, setWidgets] = useState<StatWidget[]>([])
   const [range, setRange] = useState<StatRange>('1h')

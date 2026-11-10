@@ -248,7 +248,8 @@ export type MainEvent =
   /** an agent CLI started (or stopped: agent = null) inside a terminal, however it was launched */
   | { type: 'agentDetected'; tabId: string; agent: AgentBase | null }
   | { type: 'activity'; entry: ActivityEntry }
-  | { type: 'fs'; root: string; path: string; event: string }
+  /** files changed under a space root (coalesced: the last event per path, ~200ms at a time) */
+  | { type: 'fs'; root: string; changes: { path: string; event: string }[] }
   | { type: 'openTab'; spaceId?: string; tab: Tab }
   | { type: 'servers'; servers: Server[] }
   /** something under .git changed (commit, checkout, fetch…), possibly from a terminal */

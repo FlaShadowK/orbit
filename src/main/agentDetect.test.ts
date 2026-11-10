@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { agentUnder, detectAgent, parsePs } from './agentDetect'
+import { agentUnder, detectAgent, indexProcs, parsePs } from './agentDetect'
 
 describe('detectAgent', () => {
   it('recognises agent binaries however they are started', () => {
@@ -29,6 +29,7 @@ describe('agentUnder', () => {
     310   300 /bin/zsh -c npm test
     400   100 /bin/zsh -l
     500   400 vim claude.md
+    600   100 node /x/@openai/codex/bin/codex.js
   `)
 
   it('finds the agent below a shell', () => {
@@ -37,5 +38,16 @@ describe('agentUnder', () => {
 
   it('returns null when no agent runs in that terminal', () => {
     expect(agentUnder(400, procs)).toBeNull()
+  })
+
+  it('finds an agent that replaced the shell (exec claude)', () => {
+    expect(agentUnder(600, procs)).toBe('codex')
+  })
+
+  it('accepts a prebuilt index so one scan serves every terminal', () => {
+    const idx = indexProcs(procs)
+    expect(agentUnder(200, idx)).toBe('claude')
+    expect(agentUnder(400, idx)).toBeNull()
+    expect(agentUnder(999, idx)).toBeNull()
   })
 })

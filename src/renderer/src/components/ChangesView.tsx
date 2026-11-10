@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { GitChange, GitChangeKind, Space } from '@shared/types'
 import { monaco } from '@/lib/monaco'
@@ -17,7 +18,7 @@ export const CHANGE_LETTER: Record<GitChangeKind, string> = {
 /** Code review: changed files, a side-by-side diff, and commit (& push). */
 export function ChangesView({ space, focused }: { space: Space; focused: boolean }) {
   const st = useStore((s) => s.git[space.root])
-  const { notify, refreshGit, openFile } = useStore()
+  const { notify, refreshGit, openFile } = useStore(useShallow((s) => ({ notify: s.notify, refreshGit: s.refreshGit, openFile: s.openFile })))
   const files = useMemo(() => st?.files ?? [], [st])
   const [selected, setSelected] = useState<string | null>(null)
   const [excluded, setExcluded] = useState<Set<string>>(new Set())

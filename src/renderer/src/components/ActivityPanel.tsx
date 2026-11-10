@@ -1,9 +1,10 @@
+import { useShallow } from 'zustand/react/shallow'
 import { useState } from 'react'
 import { useStore } from '@/store'
 import { Icon } from './Icon'
 
 export function ActivityPanel() {
-  const { activity, showActivity, set } = useStore()
+  const { activity, showActivity, set } = useStore(useShallow((s) => ({ activity: s.activity, showActivity: s.showActivity, set: s.set })))
   const [open, setOpen] = useState<string | null>(null)
   if (!showActivity) return null
   const items = [...activity].reverse()

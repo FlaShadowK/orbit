@@ -37,7 +37,7 @@ export function FileTree({ space }: { space: Space }) {
 
   useEffect(() => {
     const unsub = window.orbit.onEvent((e) => {
-      if (e.type === 'fs' && e.root === space.root && (e.event === 'add' || e.event === 'unlink' || e.event === 'addDir' || e.event === 'unlinkDir')) {
+      if (e.type === 'fs' && e.root === space.root && e.changes.some((c) => c.event === 'add' || c.event === 'unlink' || c.event === 'addDir' || c.event === 'unlinkDir')) {
         setVersion((v) => v + 1)
       }
     })

@@ -7,10 +7,13 @@ import type { AgentBase, SessionSpec } from '@shared/types'
 import { agentLaunch, listAgents } from './agents'
 import { defaultShell, shellEnv } from './shellEnv'
 import { openShell } from './ssh'
-import { clearStatus, emit, getStatus, send, setActivity, setStatus } from './events'
-import { ActivityTracker, StatusGuesser } from './agentActivity'
-import { agentUnder, listProcesses } from './agentDetect'
+import { clearStatus, emit, getStatus, send, sendTermBatch, setActivity, setStatus } from './events'
+import { ActivityTracker, StatusGuesser, stripAnsi } from './agentActivity'
+import { agentUnder, indexProcs, listProcesses } from './agentDetect'
 import { store } from './store'
+import { countPty } from './perf'
+import { Scrollback } from './scrollback'
+import { OutputBatcher } from './outputBatch'
 
 const SCROLLBACK = 256 * 1024
 
@@ -20,7 +23,7 @@ interface Session {
   write(data: string): void
   resize(cols: number, rows: number): void
   kill(): void
-  buffer: string
+  buffer: Scrollback
   /** started from an agent button (an agent tab) */
   agent: boolean
   /** local shell pid, for finding agents started inside it */
@@ -33,7 +36,6 @@ interface Session {
   guesser?: StatusGuesser
   /** agents only: classifies output while working, polled to report activity changes */
   tracker?: ActivityTracker
-  activityTimer?: NodeJS.Timeout
 }
 
 const sessions = new Map<string, Session>()
@@ -44,23 +46,30 @@ export function foregroundProcesses(ids: string[]): Record<string, string | null
   return Object.fromEntries(ids.map((id) => [id, sessions.get(id)?.foreground?.() ?? null]))
 }
 
+/** all terminal output goes to the renderer in coalesced batches */
+const output = new OutputBatcher(sendTermBatch)
+
 function onData(id: string, data: string): void {
+  countPty(data.length)
   const s = sessions.get(id)
   if (s) {
-    s.buffer += data
-    if (s.buffer.length > SCROLLBACK) s.buffer = s.buffer.slice(-SCROLLBACK)
-    s.tracker?.feed(data)
-    s.guesser?.feed(data)
+    s.buffer.push(data)
+    if (s.tracker || s.guesser) {
+      const text = stripAnsi(data)
+      s.tracker?.feedText(text)
+      s.guesser?.feedText(text)
+    }
   }
-  send('term:data', id, data)
+  output.push(id, data)
 }
 
 function onExit(id: string, code: number | null): void {
   const s = sessions.get(id)
   if (s?.agent) setStatus(id, 'exited')
   else if (s?.running) clearStatus(id)
-  clearInterval(s?.activityTimer)
   sessions.delete(id)
+  // the last output must reach the renderer before the exit notice
+  output.flush()
   send('term:exit', id, code)
 }
 
@@ -69,7 +78,9 @@ export async function startSession(spec: SessionSpec): Promise<{ replay?: string
   const existing = sessions.get(spec.id)
   if (existing) {
     existing.resize(spec.cols, spec.rows)
-    return { replay: existing.buffer }
+    // queued output is already in the scrollback: sending it too would print it twice
+    output.discard(spec.id)
+    return { replay: existing.buffer.toString() }
   }
   if (spec.kind === 'ssh') {
     let stream: ClientChannel
@@ -77,12 +88,12 @@ export async function startSession(spec: SessionSpec): Promise<{ replay?: string
       stream = await openShell(spec.serverId!, spec.cols, spec.rows)
     } catch (err) {
       const msg = `\r\n\x1b[31mSSH connection failed: ${(err as Error).message}\x1b[0m\r\n`
-      send('term:data', spec.id, msg)
+      sendTermBatch([[spec.id, msg]])
       send('term:exit', spec.id, 1)
       return {}
     }
     const session: Session = {
-      buffer: '',
+      buffer: new Scrollback(SCROLLBACK),
       agent: false,
       write: (d) => stream.write(d),
       resize: (cols, rows) => stream.setWindow(rows, cols, 0, 0),
@@ -123,7 +134,7 @@ export async function startSession(spec: SessionSpec): Promise<{ replay?: string
 
   const proc = pty.spawn(file, args, { name: 'xterm-256color', cols: spec.cols, rows: spec.rows, cwd, env })
   const session: Session = {
-    buffer: '',
+    buffer: new Scrollback(SCROLLBACK),
     agent: isAgent,
     pid: proc.pid,
     foreground: () => {
@@ -153,24 +164,37 @@ export async function startSession(spec: SessionSpec): Promise<{ replay?: string
   return {}
 }
 
+// ---- status + activity for terminals with an agent in them: one ticker for all of them
+const TRACK_MS = 250
+let tracker: NodeJS.Timeout | undefined
+
+function trackTick(): void {
+  const now = Date.now()
+  let any = false
+  for (const [id, s] of sessions) {
+    if (!s.tracker) continue
+    any = true
+    if (!s.hooked) {
+      const guess = s.guesser!.current(now)
+      if (guess) setStatus(id, guess)
+    }
+    if (getStatus(id) === 'working') setActivity(id, s.tracker.current(now))
+  }
+  if (!any) {
+    clearInterval(tracker)
+    tracker = undefined
+  }
+}
+
 /** Status + activity reporting for a terminal that has an agent running in it. */
 function startTracking(id: string, s: Session): void {
   setStatus(id, 'idle')
   s.tracker = new ActivityTracker()
   s.guesser = new StatusGuesser()
-  clearInterval(s.activityTimer)
-  s.activityTimer = setInterval(() => {
-    if (!s.hooked) {
-      const guess = s.guesser!.current()
-      if (guess) setStatus(id, guess)
-    }
-    if (getStatus(id) === 'working') setActivity(id, s.tracker!.current())
-  }, 250)
+  tracker ??= setInterval(trackTick, TRACK_MS)
 }
 
 function stopTracking(id: string, s: Session): void {
-  clearInterval(s.activityTimer)
-  s.activityTimer = undefined
   s.tracker = undefined
   s.guesser = undefined
   // hooks belonged to the agent Orbit launched; one typed later in the same tab has none
@@ -199,8 +223,9 @@ async function scan(): Promise<void> {
   if (scanning) return
   scanning = true
   try {
-    const procs = await listProcesses()
-    if (!procs.length) return
+    const list = await listProcesses()
+    if (!list.length) return
+    const procs = indexProcs(list)
     for (const [id, s] of local) {
       if (sessions.get(id) !== s) continue
       const found = agentUnder(s.pid!, procs)
@@ -208,7 +233,7 @@ async function scan(): Promise<void> {
       const was = s.running
       s.running = found
       emit({ type: 'agentDetected', tabId: id, agent: found })
-      if (found && !s.activityTimer) startTracking(id, s)
+      if (found && !s.tracker) startTracking(id, s)
       else if (!found && was) stopTracking(id, s)
     }
   } finally {
@@ -224,6 +249,7 @@ export function runningAgents(): Record<string, AgentBase> {
 }
 
 export function writeSession(id: string, data: string): void {
+  output.noteInput(id)
   sessions.get(id)?.write(data)
 }
 export function resizeSession(id: string, cols: number, rows: number): void {
@@ -232,7 +258,6 @@ export function resizeSession(id: string, cols: number, rows: number): void {
 export function killSession(id: string): void {
   const s = sessions.get(id)
   if (!s) return
-  clearInterval(s.activityTimer)
   s.kill()
   sessions.delete(id)
 }

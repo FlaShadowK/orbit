@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow'
 import { useEffect, useState } from 'react'
 import type { DirEntry, Tab } from '@shared/types'
 import { useStore } from '@/store'
@@ -12,7 +13,7 @@ function fmtSize(n?: number): string {
 }
 
 export function SftpView({ tab }: { tab: Tab }) {
-  const { updateTab, openFile, servers } = useStore()
+  const { updateTab, openFile, servers } = useStore(useShallow((s) => ({ updateTab: s.updateTab, openFile: s.openFile, servers: s.servers })))
   const server = servers.find((s) => s.id === tab.serverId)
   const [cwd, setCwd] = useState<string | null>(tab.cwd ?? null)
   const [entries, setEntries] = useState<DirEntry[]>([])

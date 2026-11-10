@@ -16,7 +16,11 @@ export type ChunkKind = 'deep' | 'content' | 'spinner' | 'noise'
 
 /** What a piece of agent terminal output tells us about what the agent is doing. */
 export function classifyChunk(raw: string): ChunkKind {
-  const text = stripAnsi(raw)
+  return classifyText(stripAnsi(raw))
+}
+
+/** classifyChunk for output that has already been through stripAnsi */
+export function classifyText(text: string): ChunkKind {
   if (DEEP.test(text)) return 'deep'
   const visible = text.replace(/\s+/g, '')
   if (!visible) return 'noise'
@@ -34,7 +38,11 @@ export class ActivityTracker {
   private deepAt = -Infinity
 
   feed(raw: string, now = Date.now()): void {
-    const kind = classifyChunk(raw)
+    this.feedText(stripAnsi(raw), now)
+  }
+
+  feedText(text: string, now = Date.now()): void {
+    const kind = classifyText(text)
     if (kind === 'deep') this.deepAt = now
     else if (kind === 'content') this.contentAt = now
   }
@@ -66,7 +74,10 @@ export class StatusGuesser {
   private working = false
 
   feed(raw: string, now = Date.now()): void {
-    const text = stripAnsi(raw)
+    this.feedText(stripAnsi(raw), now)
+  }
+
+  feedText(text: string, now = Date.now()): void {
     if (!text.trim()) return
     this.outputAt = now
     if (BUSY.test(text)) this.busyAt = now

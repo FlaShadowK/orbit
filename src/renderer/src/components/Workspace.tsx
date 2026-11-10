@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { memo, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { Space, Tab } from '@shared/types'
 import { computeRects, dropSideAt, previewRect, type DropSide, type PaneRect, type Rect, type SplitterRect } from '@shared/layout'
 import { useStore } from '@/store'
@@ -42,7 +42,15 @@ export function PaneContent({ tab, space, visible, focused }: { tab: Tab; space:
  * The panes of one space. Every pane is an absolutely positioned sibling, so moving a tab
  * between panes or changing the split tree never remounts its terminal or editor.
  */
-export function Workspace({ space, active, empty }: { space: Space; active: boolean; empty: ReactNode }) {
+export const Workspace = memo(function Workspace({
+  space,
+  active,
+  renderEmpty
+}: {
+  space: Space
+  active: boolean
+  renderEmpty: (space: Space) => ReactNode
+}) {
   const detached = useStore((s) => s.detached)
   const dragging = useStore((s) => s.draggingTabId)
   const ref = useRef<HTMLDivElement>(null)
@@ -53,7 +61,7 @@ export function Workspace({ space, active, empty }: { space: Space; active: bool
 
   return (
     <div className={`panes ${multi ? 'multi' : ''}`} ref={ref} style={{ display: active ? 'block' : 'none' }}>
-      {space.tabs.length === 0 && empty}
+      {space.tabs.length === 0 && renderEmpty(space)}
       {space.tabs.map((t) => {
         if (detached[t.id]) return null
         const rect = rects.get(t.id)
@@ -78,7 +86,7 @@ export function Workspace({ space, active, empty }: { space: Space; active: bool
       {draggingHere && <DropOverlay space={space} panes={panes} tabId={dragging!} />}
     </div>
   )
-}
+})
 
 function Splitter({ spaceId, splitter, container }: { spaceId: string; splitter: SplitterRect; container: React.RefObject<HTMLDivElement | null> }) {
   const { dir, area, at } = splitter

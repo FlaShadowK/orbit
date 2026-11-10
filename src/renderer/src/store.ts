@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ActivityEntry, AgentActivity, AgentBase, AgentInfo, AgentStatus, GitStatus, OrbitInfo, Server, Space, Tab, UpdateState } from '@shared/types'
+import type { ActivityEntry, AgentActivity, AgentBase, AgentInfo, AgentStatus, GitStatus, MainEvent, OrbitInfo, Server, Space, Tab, UpdateState } from '@shared/types'
 import { basename, IS_MAC, SPACE_COLORS, uid } from './lib/util'
 import { keyLabel } from '@shared/keys'
 import { hasTab, leaf, leafCount, placeTab as placeInLayout, prune, removeTab, replaceTab, setRatio, tabsIn, type DropSide } from '@shared/layout'
@@ -72,6 +72,9 @@ interface State {
 
 let persistTimer: number | undefined
 const gitTimers = new Map<string, ReturnType<typeof setTimeout>>()
+/** roots with a `git status` in flight, and those that changed again while it ran */
+const gitRunning = new Set<string>()
+const gitAgain = new Set<string>()
 /** detached windows render a single tab and must never overwrite the saved spaces */
 let persistEnabled = true
 export function disablePersistence(): void {
@@ -348,16 +351,32 @@ export const useStore = create<State>((set, get) => {
       )
     },
 
+    // Throttled, not debounced: agents writing files nonstop would keep pushing a debounce
+    // back forever. At most one `git status` per root runs at a time; changes during a run
+    // queue exactly one more.
     refreshGit(root) {
-      clearTimeout(gitTimers.get(root))
+      if (gitTimers.has(root)) return
       gitTimers.set(
         root,
         setTimeout(() => {
-          window.orbit.git?.status(root).then(
-            (st) => set({ git: { ...get().git, [root]: st } }),
-            () => set({ git: { ...get().git, [root]: { isRepo: false, ahead: 0, behind: 0, files: [] } } })
-          )
-        }, 200)
+          gitTimers.delete(root)
+          if (!window.orbit.git) return
+          if (gitRunning.has(root)) {
+            gitAgain.add(root)
+            return
+          }
+          gitRunning.add(root)
+          window.orbit.git
+            .status(root)
+            .then(
+              (st) => set({ git: { ...get().git, [root]: st } }),
+              () => set({ git: { ...get().git, [root]: { isRepo: false, ahead: 0, behind: 0, files: [] } } })
+            )
+            .finally(() => {
+              gitRunning.delete(root)
+              if (gitAgain.delete(root)) get().refreshGit(root)
+            })
+        }, 300)
       )
     },
 
@@ -412,6 +431,46 @@ export const useStore = create<State>((set, get) => {
     }
   }
 })
+
+/**
+ * Agent status, activity and detection events come in bursts with many agents running (each
+ * one can flip between streaming and thinking several times a second). Applying each as its
+ * own store update re-renders the tab bar and sidebar every time; instead they are collected
+ * and applied together once per frame. Returns false for events it doesn't handle.
+ */
+let agentQueue: { statuses: Record<string, AgentStatus>; activities: Record<string, AgentActivity>; running: Record<string, AgentBase | null> } | null = null
+
+export function queueAgentEvent(e: MainEvent): boolean {
+  if (e.type !== 'status' && e.type !== 'agentActivity' && e.type !== 'agentDetected') return false
+  if (!agentQueue) {
+    agentQueue = { statuses: {}, activities: {}, running: {} }
+    requestAnimationFrame(flushAgentEvents)
+  }
+  if (e.type === 'status') agentQueue.statuses[e.tabId] = e.status
+  else if (e.type === 'agentActivity') agentQueue.activities[e.tabId] = e.activity
+  else agentQueue.running[e.tabId] = e.agent
+  return true
+}
+
+function flushAgentEvents(): void {
+  const q = agentQueue
+  agentQueue = null
+  if (!q) return
+  const s = useStore.getState()
+  const patch: Partial<State> = {}
+  if (Object.keys(q.statuses).length) patch.statuses = { ...s.statuses, ...q.statuses }
+  if (Object.keys(q.activities).length) patch.activities = { ...s.activities, ...q.activities }
+  const detected = Object.entries(q.running)
+  if (detected.length) {
+    const running = { ...s.running }
+    for (const [id, agent] of detected) {
+      if (agent) running[id] = agent
+      else delete running[id]
+    }
+    patch.running = running
+  }
+  useStore.setState(patch)
+}
 
 export const selectActiveSpace = (s: State): Space | undefined => s.spaces.find((x) => x.id === s.activeSpaceId)
 

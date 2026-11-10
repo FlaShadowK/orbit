@@ -29,6 +29,27 @@ export async function writeFile(path: string, content: string): Promise<void> {
 
 const watchers = new Map<string, FSWatcher>()
 
+// Agents can touch hundreds of files a second (builds, generated code, test output). Each
+// change is queued and sent as one event per root every FS_FLUSH_MS, last event per path.
+const FS_FLUSH_MS = 200
+const MAX_CHANGES = 1000
+const queued = new Map<string, Map<string, string>>()
+let fsTimer: NodeJS.Timeout | null = null
+
+function queueChange(root: string, path: string, event: string): void {
+  let q = queued.get(root)
+  if (!q) queued.set(root, (q = new Map()))
+  q.delete(path) // keep insertion order = order of last change
+  if (q.size < MAX_CHANGES) q.set(path, event)
+  fsTimer ??= setTimeout(flushChanges, FS_FLUSH_MS)
+}
+
+function flushChanges(): void {
+  fsTimer = null
+  for (const [root, q] of queued) emit({ type: 'fs', root, changes: [...q].map(([path, event]) => ({ path, event })) })
+  queued.clear()
+}
+
 export function watchRoot(root: string): void {
   if (watchers.has(root)) return
   const w = chokidar.watch(root, {
@@ -37,7 +58,7 @@ export function watchRoot(root: string): void {
     depth: 12,
     awaitWriteFinish: { stabilityThreshold: 120, pollInterval: 50 }
   })
-  w.on('all', (event, path) => emit({ type: 'fs', root, path, event }))
+  w.on('all', (event, path) => queueChange(root, path, event))
   watchers.set(root, w)
 }
 

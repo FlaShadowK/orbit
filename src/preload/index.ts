@@ -31,7 +31,10 @@ const api: OrbitApi = {
   saveImage: inv('clipboard:saveImage') as OrbitApi['saveImage'],
   termForeground: inv('term:foreground') as OrbitApi['termForeground'],
   pathForFile: (file) => webUtils.getPathForFile(file),
-  onTermData: (cb) => listen('term:data', cb),
+  // main coalesces output from all terminals into batches; fan them out per terminal here
+  onTermData: (cb) => listen('term:batch', (batch: [string, string][]) => {
+    for (const [id, data] of batch) cb(id, data)
+  }),
   onTermExit: (cb) => listen('term:exit', cb),
 
   fsList: inv('fs:list') as OrbitApi['fsList'],

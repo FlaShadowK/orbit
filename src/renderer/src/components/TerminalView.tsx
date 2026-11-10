@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -6,6 +6,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import type { Space, Tab } from '@shared/types'
 import { subscribeTerm } from '@/lib/term'
+import { glBudget, type GlHolder } from '@/lib/glBudget'
 import { tabAgent, useStore } from '@/store'
 import { isAppShortcut, spaceIndexShortcut, tabIndexShortcut } from '@shared/keys'
 
@@ -58,10 +59,13 @@ interface Props {
   focused: boolean
 }
 
-export function TerminalView({ tab, space, visible, focused }: Props) {
+export const TerminalView = memo(function TerminalView({ tab, space, visible, focused }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const openRef = useRef<() => void>(() => {})
+  /** hidden terminals give their WebGL context back (Chromium allows only ~16 per page) */
+  const hideRef = useRef<() => void>(() => {})
+  const glRef = useRef<GlHolder | null>(null)
   const exited = useRef(false)
   const tabRef = useRef(tab)
   tabRef.current = tab
@@ -122,19 +126,50 @@ export function TerminalView({ tab, space, visible, focused }: Props) {
       dprQuery = window.matchMedia(`(resolution: ${dpr}dppx)`)
       dprQuery.addEventListener('change', onDprChange)
     }
-    const loadWebgl = (): void => {
-      webgl?.dispose()
+    let glCanvas: HTMLCanvasElement | null = null
+    const dropWebgl = (): void => {
+      const addon = webgl
       webgl = null
+      glBudget.drop(gl)
+      if (!addon) return
+      // xterm's dispose leaves the context alive until GC, and Chromium counts it against its
+      // limit meanwhile (killing other terminals' contexts): free it explicitly
+      if (glCanvas) {
+        glCanvas.dataset.orbitReleased = '1'
+        const ctx = glCanvas.getContext('webgl2')
+        ctx?.getExtension('WEBGL_lose_context')?.loseContext()
+        glCanvas = null
+      }
+      addon.dispose()
+    }
+    const gl: GlHolder = { visible: false, lastShown: 0, release: () => dropWebgl() }
+    glRef.current = gl
+    let glRetries = 0
+    let glRetryTimer: ReturnType<typeof setTimeout> | undefined
+    const loadWebgl = (): void => {
+      dropWebgl()
+      // no slot left (every one is on screen): stay on the DOM renderer
+      if (!glBudget.acquire(gl)) return
       try {
         const addon = new WebglAddon()
         addon.onContextLoss(() => {
-          addon.dispose()
-          if (webgl === addon) webgl = null
+          if (webgl !== addon) return addon.dispose()
+          dropWebgl()
+          // a terminal on screen shouldn't stay on the slow renderer: try again, a few times
+          if (gl.visible && glRetries++ < 3)
+            glRetryTimer = setTimeout(() => {
+              if (gl.visible && !webgl) {
+                loadWebgl()
+                term.refresh(0, term.rows - 1)
+              }
+            }, 1000)
         })
+        const before = new Set(term.element?.querySelectorAll('canvas'))
         term.loadAddon(addon)
         webgl = addon
+        glCanvas = [...(term.element?.querySelectorAll('canvas') ?? [])].find((c) => !before.has(c)) ?? null
       } catch {
-        webgl = null // DOM renderer fallback
+        dropWebgl() // DOM renderer fallback
       }
     }
     // xterm's WebGL renderer keeps its own cached DPR and does not reliably resize its
@@ -146,7 +181,8 @@ export function TerminalView({ tab, space, visible, focused }: Props) {
       dprTimer = setTimeout(() => {
         if (!opened) return
         syncCellWidth()
-        loadWebgl()
+        // hidden terminals have no WebGL renderer; they get a fresh one when shown
+        if (webgl) loadWebgl()
         fitNow()
         term.refresh(0, term.rows - 1)
       }, 50)
@@ -169,8 +205,13 @@ export function TerminalView({ tab, space, visible, focused }: Props) {
     }
     openRef.current = () => {
       openIfVisible()
+      if (opened && !webgl) {
+        loadWebgl()
+        term.refresh(0, term.rows - 1)
+      }
       fitNow()
     }
+    hideRef.current = () => dropWebgl()
 
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true
@@ -311,20 +352,30 @@ export function TerminalView({ tab, space, visible, focused }: Props) {
       el.removeEventListener('dragover', onDragOver)
       el.removeEventListener('drop', onDrop)
       window.removeEventListener('orbit:focus', onFocus)
-      webgl?.dispose()
+      clearTimeout(glRetryTimer)
+      dropWebgl()
       term.dispose()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab.id])
 
   useEffect(() => {
+    const gl = glRef.current
+    if (gl) {
+      gl.visible = visible
+      if (visible) gl.lastShown = Date.now()
+    }
     if (visible) {
       requestAnimationFrame(() => {
         openRef.current()
         if (focused) termRef.current?.focus()
       })
+      return
     }
+    // keep the context briefly so flicking between tabs doesn't rebuild it every time
+    const t = setTimeout(() => hideRef.current(), 2000)
+    return () => clearTimeout(t)
   }, [visible, focused])
 
   return <div className="terminal-host" ref={host} />
-}
+})

@@ -10,6 +10,7 @@ import { shellEnv } from './shellEnv'
 import { accelerator, type Command } from '@shared/keys'
 import { createMainWindow, mainWindow, markQuitting } from './windows'
 import { checkForUpdates, initUpdater } from './updater'
+import { startPerf } from './perf'
 
 const IS_MAC = process.platform === 'darwin'
 
@@ -97,6 +98,7 @@ function buildMenu(): void {
 }
 
 app.whenReady().then(async () => {
+  startPerf()
   store.load()
   store.onServersChanged = (servers) => emit({ type: 'servers', servers })
   shellEnv()

@@ -12,6 +12,30 @@ const MAX_READ = 5 * 1024 * 1024
 interface Conn {
   client: Client
   sftp?: Promise<SFTPWrapper>
+  /** exec channels open right now, and callers waiting for one */
+  execs: number
+  queue: (() => void)[]
+}
+
+/**
+ * sshd allows 10 channels per connection by default (MaxSessions) and every agent's ssh_exec
+ * shares one pooled connection per server, so many agents at once would get "open failed".
+ * Exec channels queue beyond this, leaving room for interactive SSH tabs and SFTP.
+ */
+const MAX_EXECS = 6
+
+function acquireExec(conn: Conn): Promise<void> {
+  if (conn.execs < MAX_EXECS) {
+    conn.execs++
+    return Promise.resolve()
+  }
+  return new Promise((res) => conn.queue.push(res))
+}
+
+function releaseExec(conn: Conn): void {
+  const next = conn.queue.shift()
+  if (next) next()
+  else conn.execs--
 }
 
 const pool = new Map<string, Promise<Conn>>()
@@ -100,7 +124,7 @@ export function connect(idOrName: string): Promise<Conn> {
         pool.delete(server.id)
       }
       client.on('close', drop).on('end', drop).on('error', drop)
-      return { client }
+      return { client, execs: 0, queue: [] }
     })
     p.catch(() => pool.delete(server.id))
     pool.set(server.id, p)
@@ -135,9 +159,10 @@ export async function exec(
   const server = resolveServer(idOrName)
   const dir = cwd ?? server.defaultDir
   const full = dir ? `cd ${shQuote(dir)} && ${command}` : command
-  const { client } = await connect(server.id)
-  return new Promise((resolve, reject) => {
-    client.exec(full, (err, stream) => {
+  const conn = await connect(server.id)
+  await acquireExec(conn)
+  return new Promise<ExecResult>((resolve, reject) => {
+    conn.client.exec(full, (err, stream) => {
       if (err) return reject(err)
       let stdout = ''
       let stderr = ''
@@ -162,7 +187,7 @@ export async function exec(
         resolve({ stdout, stderr, code: exitCode ?? code ?? null, timedOut })
       })
     })
-  })
+  }).finally(() => releaseExec(conn))
 }
 
 export async function sftp(idOrName: string): Promise<SFTPWrapper> {

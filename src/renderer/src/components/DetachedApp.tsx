@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { disablePersistence, isAgentTab, useStore } from '@/store'
+import { disablePersistence, isAgentTab, queueAgentEvent, useStore } from '@/store'
 import { Icon } from './Icon'
 import { StatusDot } from './StatusDot'
 import { TAB_ICON } from './TabBar'
@@ -29,15 +29,8 @@ export function DetachedApp({ tabId, spaceId }: { tabId: string; spaceId: string
     const st = useStore.getState
     st().init()
     const offEvent = window.orbit.onEvent((e) => {
-      if (e.type === 'status') st().set({ statuses: { ...st().statuses, [e.tabId]: e.status } })
-      if (e.type === 'agentActivity') st().set({ activities: { ...st().activities, [e.tabId]: e.activity } })
+      if (queueAgentEvent(e)) return
       if (e.type === 'servers') st().set({ servers: e.servers })
-      if (e.type === 'agentDetected') {
-        const next = { ...st().running }
-        if (e.agent) next[e.tabId] = e.agent
-        else delete next[e.tabId]
-        st().set({ running: next })
-      }
     })
     const offCmd = window.orbit.onCommand((cmd) => {
       const t = st().spaces.find((x) => x.id === spaceId)?.tabs.find((x) => x.id === tabId)

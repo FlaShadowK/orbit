@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow'
 import { useEffect, useState } from 'react'
 import type { AuthMethod, BeszelSystemRef, Server, ServerInput } from '@shared/types'
 import { useStore } from '@/store'
@@ -6,7 +7,7 @@ import { SPACE_COLORS } from '@/lib/util'
 const EMPTY: ServerInput = { name: '', host: '', port: 22, username: 'root', auth: 'agent', tags: [], color: SPACE_COLORS[1] }
 
 export function ServerModal() {
-  const { serverModal, servers, set, notify } = useStore()
+  const { serverModal, servers, set, notify } = useStore(useShallow((s) => ({ serverModal: s.serverModal, servers: s.servers, set: s.set, notify: s.notify })))
   const editing: Server | undefined = serverModal?.mode === 'edit' ? serverModal.server : undefined
   const [form, setForm] = useState<ServerInput>(EMPTY)
   const [secretFlags, setSecretFlags] = useState({ password: false, privateKey: false, passphrase: false, beszelPassword: false })

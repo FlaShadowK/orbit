@@ -1,9 +1,10 @@
+import { useShallow } from 'zustand/react/shallow'
 import { useEffect, useState } from 'react'
 import type { Settings } from '@shared/types'
 import { useStore } from '@/store'
 
 export function SettingsModal() {
-  const { settingsOpen, info, agents, set, notify } = useStore()
+  const { settingsOpen, info, agents, set, notify } = useStore(useShallow((s) => ({ settingsOpen: s.settingsOpen, info: s.info, agents: s.agents, set: s.set, notify: s.notify })))
   const [settings, setSettings] = useState<Settings | null>(null)
   const [custom, setCustom] = useState('')
 

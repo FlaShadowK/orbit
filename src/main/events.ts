@@ -1,13 +1,40 @@
 import { BrowserWindow, Notification } from 'electron'
 import type { ActivityEntry, AgentActivity, AgentStatus, MainEvent } from '@shared/types'
-import { showMain } from './windows'
+import { detachedWindows, mainWindow, showMain } from './windows'
+import { countIpc, PERF } from './perf'
+import type { OutputBatch } from './outputBatch'
 
 export function emit(ev: MainEvent): void {
-  for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('orbit:event', ev)
+  for (const w of BrowserWindow.getAllWindows())
+    if (!w.isDestroyed()) {
+      w.webContents.send('orbit:event', ev)
+      if (PERF) countIpc(64)
+    }
 }
 
 export function send(channel: string, ...args: unknown[]): void {
-  for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(channel, ...args)
+  for (const w of BrowserWindow.getAllWindows())
+    if (!w.isDestroyed()) {
+      w.webContents.send(channel, ...args)
+      if (PERF) countIpc(64)
+    }
+}
+
+/**
+ * Terminal output: the main window gets every batch, a detached window only its own tab's
+ * output (it renders nothing else).
+ */
+export function sendTermBatch(batch: OutputBatch): void {
+  const main = mainWindow()
+  if (main) {
+    main.webContents.send('term:batch', batch)
+    if (PERF) countIpc(batch.reduce((n, [, d]) => n + d.length, 0))
+  }
+  for (const [tabId, w] of detachedWindows()) {
+    if (w.isDestroyed()) continue
+    const mine = batch.filter(([id]) => id === tabId)
+    if (mine.length) w.webContents.send('term:batch', mine)
+  }
 }
 
 // ---- agent status

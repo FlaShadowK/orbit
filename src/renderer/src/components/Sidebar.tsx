@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow'
 import { useState } from 'react'
 import { isAgentTab, spaceActivity, spaceStatus, useStore } from '@/store'
 import { Icon } from './Icon'
@@ -12,7 +13,7 @@ export async function createSpaceFromPicker(): Promise<void> {
 }
 
 export function Sidebar() {
-  const { spaces, activeSpaceId, statuses, activities, running, servers, setActiveSpace, removeSpace, updateSpace, openSsh, openSftp, set } = useStore()
+  const { spaces, activeSpaceId, statuses, activities, running, servers, setActiveSpace, removeSpace, updateSpace, openSsh, openSftp, set } = useStore(useShallow((s) => ({ spaces: s.spaces, activeSpaceId: s.activeSpaceId, statuses: s.statuses, activities: s.activities, running: s.running, servers: s.servers, setActiveSpace: s.setActiveSpace, removeSpace: s.removeSpace, updateSpace: s.updateSpace, openSsh: s.openSsh, openSftp: s.openSftp, set: s.set })))
   const [renaming, setRenaming] = useState<string | null>(null)
   const [menu, setMenu] = useState<string | null>(null)
 

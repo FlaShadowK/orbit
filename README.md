@@ -131,6 +131,7 @@ npm install        # native modules (node-pty) are rebuilt for Electron in posti
 npm run dev        # hot reload
 npm run typecheck
 npm test
+npm run stress -- --agents 50   # N fake agents streaming at once; add --intensity 5 --visible 9 --cycle for heavy load
 ```
 
 **Stack:** Electron · React 19 · TypeScript · electron-vite · xterm.js · node-pty · ssh2 · Monaco · zustand · MCP TypeScript SDK

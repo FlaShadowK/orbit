@@ -15,6 +15,7 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
+    "stress": "npm run build && node scripts/stress/run.mjs",
     "postinstall": "node scripts/fix-node-pty.cjs && electron-builder install-app-deps",
     "build:mac": "npm run build && electron-builder --mac --publish never",
     "build:win": "npm run build && electron-builder --win --publish never",

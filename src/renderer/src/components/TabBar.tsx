@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow'
 import { useState } from 'react'
 import type { Space, Tab } from '@shared/types'
 import { isAgentTab, useStore } from '@/store'
@@ -33,7 +34,7 @@ export const TAB_ICON: Record<Tab['kind'], string> = {
 }
 
 export function TabBar({ space }: { space: Space }) {
-  const { statuses, activities, running, dirty, detached, setActiveTab, updateTab, moveTab, splitWith, closePane, showFiles, set } = useStore()
+  const { statuses, activities, running, dirty, detached, setActiveTab, updateTab, moveTab, splitWith, closePane, showFiles, set } = useStore(useShallow((s) => ({ statuses: s.statuses, activities: s.activities, running: s.running, dirty: s.dirty, detached: s.detached, setActiveTab: s.setActiveTab, updateTab: s.updateTab, moveTab: s.moveTab, splitWith: s.splitWith, closePane: s.closePane, showFiles: s.showFiles, set: s.set })))
   const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null)
   const [tabMenu, setTabMenu] = useState<{ tab: Tab; x: number; y: number } | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
@@ -161,7 +162,7 @@ const SPLITS: { side: Exclude<DropSide, 'center'>; label: string; icon: string }
 
 /** Right-click menu on a tab. */
 function TabMenu({ space, tab, x, y, onClose, onRename }: { space: Space; tab: Tab; x: number; y: number; onClose: () => void; onRename: () => void }) {
-  const { detached, splitWith, placeTab, closePane, detachTab } = useStore()
+  const { detached, splitWith, placeTab, closePane, detachTab } = useStore(useShallow((s) => ({ detached: s.detached, splitWith: s.splitWith, placeTab: s.placeTab, closePane: s.closePane, detachTab: s.detachTab })))
   const isDetached = !!detached[tab.id]
   const target = space.activeTabId
   const multi = leafCount(space.layout) > 1
@@ -211,7 +212,7 @@ function TabMenu({ space, tab, x, y, onClose, onRename }: { space: Space; tab: T
 }
 
 export function NewTabMenu({ at, onClose }: { at: { x: number; y: number }; onClose: () => void }) {
-  const { agents, servers, newAgent, newTerminal, openSsh, set } = useStore()
+  const { agents, servers, newAgent, newTerminal, openSsh, set } = useStore(useShallow((s) => ({ agents: s.agents, servers: s.servers, newAgent: s.newAgent, newTerminal: s.newTerminal, openSsh: s.openSsh, set: s.set })))
   return (
     <>
       <div className="menu-backdrop" onClick={onClose} />

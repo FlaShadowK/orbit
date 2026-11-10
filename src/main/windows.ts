@@ -65,6 +65,11 @@ export function mainWindow(): BrowserWindow | null {
   return main && !main.isDestroyed() ? main : null
 }
 
+/** tab id → the window it was moved to */
+export function detachedWindows(): ReadonlyMap<string, BrowserWindow> {
+  return detached
+}
+
 export interface DetachRequest {
   tabId: string
   spaceId: string

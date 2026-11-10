@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { AgentInfo, Space, Tab } from '@shared/types'
-import { selectActiveSpace, useStore } from './store'
+import { queueAgentEvent, selectActiveSpace, useStore } from './store'
 import { Sidebar, createSpaceFromPicker } from './components/Sidebar'
 import { TabBar, closeTabWithCleanup } from './components/TabBar'
 import { reloadIfClean, saveTab } from './components/EditorView'
@@ -25,20 +26,8 @@ function useMainEvents(): void {
   useEffect(() => {
     const st = useStore.getState
     const offEvent = window.orbit.onEvent((e) => {
+      if (queueAgentEvent(e)) return
       switch (e.type) {
-        case 'status':
-          st().set({ statuses: { ...st().statuses, [e.tabId]: e.status } })
-          break
-        case 'agentActivity':
-          st().set({ activities: { ...st().activities, [e.tabId]: e.activity } })
-          break
-        case 'agentDetected': {
-          const running = { ...st().running }
-          if (e.agent) running[e.tabId] = e.agent
-          else delete running[e.tabId]
-          st().set({ running })
-          break
-        }
         case 'agentStarted':
           st().updateTab(e.tabId, { agentStarted: true })
           break
@@ -46,7 +35,7 @@ function useMainEvents(): void {
           st().set({ activity: [...st().activity.slice(-499), e.entry] })
           break
         case 'fs':
-          if (e.event === 'change') reloadIfClean(e.path)
+          for (const c of e.changes) if (c.event === 'change') reloadIfClean(c.path)
           st().refreshGit(e.root)
           break
         case 'git':
@@ -156,7 +145,7 @@ function useMainEvents(): void {
 }
 
 function Welcome({ space }: { space?: Space }) {
-  const { agents, newAgent, newTerminal } = useStore()
+  const { agents, newAgent, newTerminal } = useStore(useShallow((s) => ({ agents: s.agents, newAgent: s.newAgent, newTerminal: s.newTerminal })))
   const [editing, setEditing] = useState<AgentInfo | 'new' | null>(null)
   if (!space)
     return (
@@ -224,42 +213,53 @@ export function App() {
   return target ? <DetachedApp {...target} /> : <MainApp />
 }
 
-function MainApp() {
-  const state = useStore()
-  const space = selectActiveSpace(state)
-  useMainEvents()
+/** Clears the green "done" dot a few seconds after the user looks at the tab. */
+function DoneClearer() {
+  const id = useStore((s) => selectActiveSpace(s)?.activeTabId)
+  const done = useStore((s) => (id ? s.statuses[id] === 'done' : false))
   useEffect(() => {
-    state.init()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // clear the green "done" dot a few seconds after the user looks at the tab
-  useEffect(() => {
-    const id = space?.activeTabId
-    if (!id || state.statuses[id] !== 'done') return
+    if (!id || !done) return
     const t = setTimeout(() => {
       const s = useStore.getState()
       if (s.statuses[id] === 'done') s.set({ statuses: { ...s.statuses, [id]: 'idle' } })
     }, 3000)
     return () => clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [space?.activeTabId, state.statuses])
+  }, [id, done])
+  return null
+}
 
-  if (!state.ready) return <div className="boot" />
+const renderWelcome = (s: Space): ReactNode => <Welcome space={s} />
+
+// MainApp subscribes only to what it lays out: agent status/activity updates (many per second
+// with lots of agents) re-render the tab bar and sidebar, never the workspaces and terminals.
+function MainApp() {
+  const ready = useStore((s) => s.ready)
+  const platform = useStore((s) => s.info?.platform)
+  const spaces = useStore((s) => s.spaces)
+  const space = useStore(selectActiveSpace)
+  const showFiles = useStore((s) => s.showFiles)
+  const toast = useStore((s) => s.toast)
+  useMainEvents()
+  useEffect(() => {
+    useStore.getState().init()
+  }, [])
+
+  if (!ready) return <div className="boot" />
 
   return (
-    <div className={`app platform-${state.info?.platform}`}>
+    <div className={`app platform-${platform}`}>
+      <DoneClearer />
       <Sidebar />
       <main className="main">
         {space ? <TabBar space={space} /> : <div className="tabbar drag" />}
         <div className="body">
           <div className="workspaces">
-            {state.spaces.map((s) => (
-              <Workspace key={s.id} space={s} active={s.id === space?.id} empty={<Welcome space={s} />} />
+            {spaces.map((s) => (
+              <Workspace key={s.id} space={s} active={s.id === space?.id} renderEmpty={renderWelcome} />
             ))}
             {!space && <Welcome />}
           </div>
-          {space && state.showFiles && <FileTree key={space.id} space={space} />}
+          {space && showFiles && <FileTree key={space.id} space={space} />}
         </div>
         <ActivityPanel />
       </main>
@@ -267,7 +267,7 @@ function MainApp() {
       <SettingsModal />
       <StatsEditor />
       <Palette />
-      {state.toast && <div className={`toast ${state.toast.kind}`}>{state.toast.text}</div>}
+      {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
     </div>
   )
 }

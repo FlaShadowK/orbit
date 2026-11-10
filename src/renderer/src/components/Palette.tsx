@@ -14,7 +14,13 @@ interface Cmd {
   run: () => void
 }
 
+/** Mounted only while open, so the full store subscription below costs nothing otherwise. */
 export function Palette() {
+  const open = useStore((s) => s.paletteOpen)
+  return open ? <OpenPalette /> : null
+}
+
+function OpenPalette() {
   const state = useStore()
   const [q, setQ] = useState('')
   const [sel, setSel] = useState(0)

@@ -47,23 +47,42 @@ export function parsePs(out: string): Proc[] {
   return procs
 }
 
-/** The agent running anywhere under `rootPid` (breadth-first, so the outermost one wins). */
-export function agentUnder(rootPid: number, procs: Proc[]): AgentBase | null {
+export interface ProcIndex {
+  byPid: Map<number, Proc>
+  children: Map<number, Proc[]>
+}
+
+/** Parent → children lookup for one process snapshot; build once per scan, query per terminal. */
+export function indexProcs(procs: Proc[]): ProcIndex {
+  const byPid = new Map<number, Proc>()
   const children = new Map<number, Proc[]>()
   for (const p of procs) {
+    byPid.set(p.pid, p)
     const list = children.get(p.ppid)
     if (list) list.push(p)
     else children.set(p.ppid, [p])
   }
-  const queue = [...(children.get(rootPid) ?? [])]
+  return { byPid, children }
+}
+
+/**
+ * The agent running in the terminal whose shell is `rootPid`: the root itself (`exec claude`
+ * replaces the shell) or anything below it, breadth-first so the outermost one wins.
+ */
+export function agentUnder(rootPid: number, procs: Proc[] | ProcIndex): AgentBase | null {
+  const { byPid, children } = Array.isArray(procs) ? indexProcs(procs) : procs
+  const root = byPid.get(rootPid)
+  if (!root) return null
+  const queue = [root]
   const seen = new Set<number>()
-  while (queue.length) {
-    const p = queue.shift()!
+  for (let i = 0; i < queue.length; i++) {
+    const p = queue[i]
     if (seen.has(p.pid)) continue
     seen.add(p.pid)
     const agent = detectAgent(p.args)
     if (agent) return agent
-    queue.push(...(children.get(p.pid) ?? []))
+    const kids = children.get(p.pid)
+    if (kids) queue.push(...kids)
   }
   return null
 }
