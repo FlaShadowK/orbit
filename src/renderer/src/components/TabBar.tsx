@@ -1,14 +1,23 @@
 import { useShallow } from 'zustand/react/shallow'
 import { useState } from 'react'
 import type { Space, Tab } from '@shared/types'
-import { isAgentTab, useStore } from '@/store'
+import { isAgentTab, usageText, useStore } from '@/store'
 import { Icon } from './Icon'
 import { StatusDot } from './StatusDot'
 import { disposeModel } from './EditorView'
 import { keyLabel } from '@shared/keys'
 import { hasTab, leafCount, type DropSide } from '@shared/layout'
-import { IS_MAC } from '@/lib/util'
+import { IS_MAC, isFileOnly } from '@/lib/util'
 import { TAB_MIME } from './Workspace'
+import { previewKind } from '@shared/fileKinds'
+
+const VIEWER_ICON = { image: 'image', pdf: 'file', video: 'play', audio: 'music' } as const
+
+/** Tab icon: the kind of tab, or the kind of file a viewer tab shows. */
+export function tabIcon(t: Tab): string {
+  const pk = t.kind === 'editor' ? previewKind(t.filePath) : null
+  return pk ? VIEWER_ICON[pk] : TAB_ICON[t.kind]
+}
 
 /** True when a drag ended outside this window's bounds (screen coordinates). */
 function outsideWindow(e: React.DragEvent): boolean {
@@ -34,7 +43,7 @@ export const TAB_ICON: Record<Tab['kind'], string> = {
 }
 
 export function TabBar({ space }: { space: Space }) {
-  const { statuses, activities, running, dirty, detached, setActiveTab, updateTab, moveTab, splitWith, closePane, showFiles, set } = useStore(useShallow((s) => ({ statuses: s.statuses, activities: s.activities, running: s.running, dirty: s.dirty, detached: s.detached, setActiveTab: s.setActiveTab, updateTab: s.updateTab, moveTab: s.moveTab, splitWith: s.splitWith, closePane: s.closePane, showFiles: s.showFiles, set: s.set })))
+  const { statuses, activities, running, dirty, detached, setActiveTab, updateTab, moveTab, splitWith, closePane, showFiles, set, usage, showUsage } = useStore(useShallow((s) => ({ statuses: s.statuses, activities: s.activities, running: s.running, dirty: s.dirty, detached: s.detached, setActiveTab: s.setActiveTab, updateTab: s.updateTab, moveTab: s.moveTab, splitWith: s.splitWith, closePane: s.closePane, showFiles: s.showFiles, set: s.set, usage: s.usage, showUsage: !!(s.settings.devMode && s.settings.showUsage) })))
   const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null)
   const [tabMenu, setTabMenu] = useState<{ tab: Tab; x: number; y: number } | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
@@ -52,7 +61,7 @@ export function TabBar({ space }: { space: Space }) {
           return (
             <div
               key={t.id}
-              className={`tab ${active ? 'active' : ''} ${shown ? 'shown' : ''} ${isDetached ? 'detached' : ''} ${dropIndex === i ? 'drop-before' : ''} kind-${t.kind}`}
+              className={`tab ${active ? 'active' : ''} ${shown ? 'shown' : ''} ${isDetached ? 'detached' : ''} ${dropIndex === i ? 'drop-before' : ''} ${showUsage ? 'with-meta' : ''} kind-${t.kind}`}
               onMouseDown={(e) => e.button === 1 && closeTabWithCleanup(t)}
               onClick={() => setActiveTab(t.id)}
               onDoubleClick={() => setRenaming(t.id)}
@@ -86,7 +95,7 @@ export function TabBar({ space }: { space: Space }) {
               }}
               title={isDetached ? `${t.title} (in its own window)` : (t.filePath ?? t.title)}
             >
-              <span className="tab-icon"><Icon name={isDetached ? 'window' : agentTab ? 'agent' : TAB_ICON[t.kind]} size={13} /></span>
+              <span className="tab-icon"><Icon name={isDetached ? 'window' : agentTab ? 'agent' : tabIcon(t)} size={13} /></span>
               {renaming === t.id ? (
                 <input
                   autoFocus
@@ -101,6 +110,11 @@ export function TabBar({ space }: { space: Space }) {
                     if (e.key === 'Escape') setRenaming(null)
                   }}
                 />
+              ) : showUsage && (t.kind === 'agent' || t.kind === 'terminal' || t.kind === 'ssh') ? (
+                <span className="tab-text">
+                  <span className="tab-title">{t.title}</span>
+                  <span className="usage-meta">{usageText(usage?.tabs[t.id]) || '…'}</span>
+                </span>
               ) : (
                 <span className="tab-title">{t.title}</span>
               )}
@@ -241,8 +255,8 @@ export function NewTabMenu({ at, onClose }: { at: { x: number; y: number }; onCl
         >
           <Icon name="terminal" /> Terminal
         </button>
-        {servers.length > 0 && <div className="dropdown-label">SSH</div>}
-        {servers.map((s) => (
+        {servers.some((s) => !isFileOnly(s)) && <div className="dropdown-label">SSH</div>}
+        {servers.filter((s) => !isFileOnly(s)).map((s) => (
           <button
             key={s.id}
             onClick={() => {

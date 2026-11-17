@@ -1,10 +1,12 @@
-import { memo, useEffect, useRef } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
-import type { Space, Tab } from '@shared/types'
+import type { Space, SshStage, Tab } from '@shared/types'
+import { themeById } from '@shared/themes'
+import { SshConnecting, type ConnState } from './SshConnecting'
 import { subscribeTerm } from '@/lib/term'
 import { glBudget, type GlHolder } from '@/lib/glBudget'
 import { tabAgent, useStore } from '@/store'
@@ -12,17 +14,7 @@ import { isAppShortcut, spaceIndexShortcut, tabIndexShortcut } from '@shared/key
 
 const IS_MAC = navigator.platform.toLowerCase().includes('mac')
 
-const THEME = {
-  background: '#0b0d12',
-  foreground: '#d7dcea',
-  cursor: '#8b9bff',
-  cursorAccent: '#0b0d12',
-  selectionBackground: '#2a3b5c',
-  black: '#1b2030', red: '#ff6b81', green: '#7ee787', yellow: '#f5c26b',
-  blue: '#7aa2ff', magenta: '#c792ea', cyan: '#5eead4', white: '#d7dcea',
-  brightBlack: '#4b5470', brightRed: '#ff8fa0', brightGreen: '#a5f3a5', brightYellow: '#ffd88a',
-  brightBlue: '#9db8ff', brightMagenta: '#ddb3ff', brightCyan: '#99f6e4', brightWhite: '#ffffff'
-}
+const termTheme = (id?: string): ReturnType<typeof themeById>['term'] => themeById(id ?? window.orbit.initialTheme).term
 
 /** shell-quote a path for pasting into a terminal */
 function quotePath(p: string): string {
@@ -69,6 +61,10 @@ export const TerminalView = memo(function TerminalView({ tab, space, visible, fo
   const exited = useRef(false)
   const tabRef = useRef(tab)
   tabRef.current = tab
+  const restartRef = useRef<() => void>(() => {})
+  /** ssh tabs: connection progress, shown over the terminal until the shell is up */
+  const [conn, setConn] = useState<ConnState | null>(null)
+  const themeId = useStore((s) => s.settings.theme)
 
   useEffect(() => {
     const term = new Terminal({
@@ -85,7 +81,7 @@ export const TerminalView = memo(function TerminalView({ tab, space, visible, fo
       customGlyphs: true,
       rescaleOverlappingGlyphs: true,
       drawBoldTextInBrightColors: false,
-      theme: THEME
+      theme: termTheme(useStore.getState().settings.theme)
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
@@ -242,11 +238,12 @@ export const TerminalView = memo(function TerminalView({ tab, space, visible, fo
       exited.current = false
       const t = tabRef.current
       fitNow()
+      if (t.kind === 'ssh') setConn({ stage: 'connecting', since: Date.now() })
       window.orbit
         .termStart({
           id: t.id,
           kind: t.kind === 'ssh' ? 'ssh' : 'pty',
-          cwd: space.root,
+          cwd: t.cwd ?? space.root,
           tabKind: t.kind,
           agent: t.agent,
           agentSessionId: t.agentSessionId,
@@ -258,8 +255,21 @@ export const TerminalView = memo(function TerminalView({ tab, space, visible, fo
         })
         .then((r) => {
           if (r.replay) term.write(r.replay)
+          if (t.kind !== 'ssh') return
+          if (r.error) setConn((c) => ({ stage: 'error', since: c?.since ?? Date.now(), error: r.error }))
+          else setConn(null)
         })
     }
+    restartRef.current = () => {
+      term.reset()
+      start()
+    }
+    const offStage =
+      tab.kind === 'ssh'
+        ? window.orbit.onEvent((e) => {
+            if (e.type === 'sshStage' && e.tabId === tab.id) setConn((c) => (c && c.stage !== 'error' ? { ...c, stage: e.stage as SshStage } : c))
+          })
+        : () => {}
 
     const unsub = subscribeTerm(
       tab.id,
@@ -344,6 +354,7 @@ export const TerminalView = memo(function TerminalView({ tab, space, visible, fo
     window.addEventListener('orbit:focus', onFocus)
 
     return () => {
+      offStage()
       ro.disconnect()
       dprQuery?.removeEventListener('change', onDprChange)
       clearTimeout(dprTimer)
@@ -377,5 +388,25 @@ export const TerminalView = memo(function TerminalView({ tab, space, visible, fo
     return () => clearTimeout(t)
   }, [visible, focused])
 
-  return <div className="terminal-host" ref={host} />
+  useEffect(() => {
+    const term = termRef.current
+    if (term) term.options.theme = termTheme(themeId)
+  }, [themeId])
+
+  return (
+    <>
+      <div className="terminal-host" ref={host} />
+      {conn && tab.serverId && (
+        <SshConnecting
+          serverId={tab.serverId}
+          state={conn}
+          onRetry={() => restartRef.current()}
+          onDismiss={() => {
+            setConn(null)
+            termRef.current?.focus()
+          }}
+        />
+      )}
+    </>
+  )
 })

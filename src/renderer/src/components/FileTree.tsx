@@ -4,6 +4,9 @@ import { useStore } from '@/store'
 import { Icon } from './Icon'
 import { GitPanel } from './GitPanel'
 import { CHANGE_LETTER } from './ChangesView'
+import { ContextMenu, type MenuAt, type MenuItem } from './ContextMenu'
+import { openExternally } from './FileViewer'
+import { IS_MAC, REVEAL_LABEL } from '@/lib/util'
 
 /** git state for the tree: kind per changed file, and folders that contain changes */
 interface TreeGit {
@@ -11,6 +14,37 @@ interface TreeGit {
   dirs: Set<string>
 }
 const GitCtx = createContext<TreeGit>({ files: new Map(), dirs: new Set() })
+/** right-click on a row opens the menu for that file or folder */
+const MenuCtx = createContext<(e: React.MouseEvent, entry: DirEntry) => void>(() => {})
+
+const OPEN_FOLDER_LABEL = IS_MAC ? 'Open in Finder' : 'Open in File Manager'
+
+function copy(text: string, what: string): void {
+  navigator.clipboard.writeText(text).then(() => useStore.getState().notify(`Copied ${what}`))
+}
+
+function entryMenu(entry: DirEntry, root: string): MenuItem[] {
+  const s = useStore.getState()
+  const rel = entry.path.startsWith(root) ? entry.path.slice(root.length).replace(/^[\\/]/, '') || '.' : entry.path
+  const copyItems: MenuItem[] = [
+    'sep',
+    { label: 'Copy Path', icon: 'copy', onClick: () => copy(entry.path, 'path') },
+    { label: 'Copy Relative Path', icon: 'copy', onClick: () => copy(rel, 'relative path') }
+  ]
+  if (entry.dir)
+    return [
+      { label: 'Open in Terminal', icon: 'terminal', onClick: () => s.newTerminal(entry.path) },
+      { label: OPEN_FOLDER_LABEL, icon: 'folder', onClick: () => openExternally(entry.path) },
+      { label: REVEAL_LABEL, icon: 'search', onClick: () => window.orbit.reveal(entry.path) },
+      ...copyItems
+    ]
+  return [
+    { label: 'Open', icon: 'file', onClick: () => s.openFile(entry.path) },
+    { label: 'Open with Default App', icon: 'window', onClick: () => openExternally(entry.path) },
+    { label: REVEAL_LABEL, icon: 'folder', onClick: () => window.orbit.reveal(entry.path) },
+    ...copyItems
+  ]
+}
 
 function useTreeGit(root: string): TreeGit {
   const st = useStore((s) => s.git[root])
@@ -45,12 +79,19 @@ export function FileTree({ space }: { space: Space }) {
   }, [space.root])
 
   const treeGit = useTreeGit(space.root)
+  const [menu, setMenu] = useState<{ at: MenuAt; entry: DirEntry } | null>(null)
+  const openMenu = useCallback((e: React.MouseEvent, entry: DirEntry) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setMenu({ at: { x: e.clientX, y: e.clientY }, entry })
+  }, [])
   return (
     <GitCtx.Provider value={treeGit}>
+    <MenuCtx.Provider value={openMenu}>
     <div className="filetree">
       <div className="panel-header">
         <span className="panel-title" title={space.root}>{space.name}</span>
-        <button className="icon-btn" title="Reveal in Finder" onClick={() => window.orbit.reveal(space.root)}>
+        <button className="icon-btn" title={OPEN_FOLDER_LABEL} onClick={() => openExternally(space.root)}>
           <Icon name="folder" />
         </button>
         <button className="icon-btn" title="Refresh" onClick={() => setVersion((v) => v + 1)}>
@@ -58,11 +99,13 @@ export function FileTree({ space }: { space: Space }) {
         </button>
       </div>
       <input className="tree-filter" placeholder="Filter open folders…" value={filter} onChange={(e) => setFilter(e.target.value)} />
-      <div className="tree-scroll">
+      <div className="tree-scroll" onContextMenu={(e) => openMenu(e, { name: space.name, path: space.root, dir: true })}>
         <Dir path={space.root} depth={0} version={version} filter={filter.toLowerCase()} initiallyOpen />
       </div>
       <GitPanel space={space} />
+      {menu && <ContextMenu at={menu.at} items={entryMenu(menu.entry, space.root)} onClose={() => setMenu(null)} />}
     </div>
+    </MenuCtx.Provider>
     </GitCtx.Provider>
   )
 }
@@ -93,9 +136,10 @@ function DirNode({ entry, depth, version, filter }: { entry: DirEntry; depth: nu
   const [open, setOpen] = useState(false)
   const dim = entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'vendor'
   const changed = useContext(GitCtx).dirs.has(entry.path)
+  const onMenu = useContext(MenuCtx)
   return (
     <>
-      <div className={`tree-row ${dim ? 'dim' : ''} ${changed ? 'has-changes' : ''}`} style={{ paddingLeft: 8 + depth * 12 }} onClick={() => setOpen(!open)}>
+      <div className={`tree-row ${dim ? 'dim' : ''} ${changed ? 'has-changes' : ''}`} style={{ paddingLeft: 8 + depth * 12 }} onClick={() => setOpen(!open)} onContextMenu={(e) => onMenu(e, entry)}>
         <Icon name={open ? 'chevron-down' : 'chevron-right'} size={12} />
         <span className="tree-name">{entry.name}</span>
         {changed && <span className="tree-dirdot" />}
@@ -112,8 +156,10 @@ function FileNode({ entry, depth }: { entry: DirEntry; depth: number }) {
     return sp?.tabs.find((t) => t.id === sp.activeTabId)?.filePath
   })
   const kind = useContext(GitCtx).files.get(entry.path)
+  const onMenu = useContext(MenuCtx)
   return (
     <div
+      onContextMenu={(e) => onMenu(e, entry)}
       className={`tree-row file ${activePath === entry.path ? 'active' : ''} ${entry.name.startsWith('.') ? 'dim' : ''} ${kind ? `git-${kind}` : ''}`}
       style={{ paddingLeft: 20 + depth * 12 }}
       onClick={() => openFile(entry.path)}

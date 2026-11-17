@@ -3,15 +3,19 @@ import { execFile } from 'child_process'
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { homedir, userInfo } from 'os'
 import { extname, join } from 'path'
-import type { GitChange, ServerInput, SessionSpec, Settings, Space, StatRange } from '@shared/types'
+import type { GitChange, ServerInput, SessionSpec, Settings, Space, SpaceGroup, StatRange } from '@shared/types'
 import { store } from './store'
 import * as ssh from './ssh'
 import { listAgents } from './agents'
-import { foregroundProcesses, killSession, resizeSession, runningAgents, startSession, writeSession } from './sessions'
+import { foregroundProcesses, killSession, resizeSession, runningAgents, sessionSamples, startSession, writeSession } from './sessions'
 import * as git from './git'
 import * as beszel from './beszel'
-import { listDir, readFile, watchRoot, writeFile } from './files'
-import { getActivity, getStatuses, setTabTitle } from './events'
+import { listDir, makeDir, readFile, renamePath, watchRoot, writeFile } from './files'
+import { emit, getActivity, getStatuses, setTabTitle } from './events'
+import { cacheRemoteFile, isFtp, remoteFs, serverFor } from './remoteFs'
+import { closeFtp } from './ftp'
+import { cancelTransfer, startTransfer, type TransferRequest } from './transfers'
+import { usageReport } from './usage'
 import { mcpEndpoint } from './mcp'
 import { parseSshConfig } from './sshConfig'
 import { shellEnv, which } from './shellEnv'
@@ -22,6 +26,21 @@ import { checkForUpdates, installUpdate, rescheduleUpdates, updateState } from '
 const IMAGE_MIME: Record<string, string> = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
   '.webp': 'image/webp', '.svg': 'image/svg+xml', '.avif': 'image/avif', '.ico': 'image/x-icon'
+}
+
+/**
+ * "Open with default app" must not start programs: a script or app bundle (local, or a copy
+ * downloaded from a server) would run instead of opening. Those are shown in Finder instead.
+ */
+const LAUNCHES = /\.(app|command|tool|terminal|sh|bash|zsh|fish|py|rb|pl|workflow|scpt|applescript|action|jar|exe|bat|cmd|ps1|vbs|msi|scr|lnk|desktop|appimage|run)$/i
+
+async function openSafely(p: string): Promise<void> {
+  if (LAUNCHES.test(p.replace(/[\\/]+$/, ''))) {
+    shell.showItemInFolder(p)
+    throw new Error('Orbit doesn\'t run programs or scripts directly; it is selected in your file manager instead')
+  }
+  const err = await shell.openPath(p)
+  if (err) throw new Error(err)
 }
 
 export function registerIpc(): void {
@@ -39,16 +58,18 @@ export function registerIpc(): void {
 
   // spaces / settings
   h('spaces:get', () => store.getSpaces())
-  h('spaces:set', (e, spaces: Space[], activeSpaceId?: string) => {
+  h('spaces:set', (e, spaces: Space[], activeSpaceId?: string, groups?: SpaceGroup[]) => {
     // only the main window owns the layout; detached windows hold a read-only copy
     if (e.sender !== mainWindow()?.webContents) return
-    store.setSpaces(spaces, activeSpaceId)
+    store.setSpaces(spaces, activeSpaceId, groups)
     for (const s of spaces) if (existsSync(s.root)) watchRoot(s.root)
   })
   h('settings:get', () => store.getSettings())
   h('settings:set', (_e, patch: Partial<Settings>) => {
     const next = store.setSettings(patch)
     if ('autoUpdate' in patch) rescheduleUpdates()
+    // every window follows theme and developer settings
+    emit({ type: 'settings', settings: next })
     return next
   })
   h('dialog:folder', async () => {
@@ -62,6 +83,8 @@ export function registerIpc(): void {
     return r.canceled ? null : r.filePaths[0]
   })
   h('shell:reveal', (_e, p: string) => shell.showItemInFolder(p))
+  h('shell:openPath', (_e, p: string) => openSafely(p))
+  h('shell:trash', (_e, p: string) => shell.trashItem(p))
   h('shell:open', (_e, url: string) => {
     if (isSafeExternalUrl(url)) return shell.openExternal(url)
   })
@@ -89,7 +112,9 @@ export function registerIpc(): void {
   })
 
   // local files
-  h('fs:list', (_e, dir: string) => listDir(dir))
+  h('fs:list', (_e, dir: string, stats?: boolean) => listDir(dir, !!stats))
+  h('fs:mkdir', (_e, p: string) => makeDir(p))
+  h('fs:rename', (_e, from: string, to: string) => renamePath(from, to))
   h('fs:read', (_e, p: string) => readFile(p))
   // images shown in the markdown preview (the renderer can't load file: URLs)
   h('fs:image', (_e, p: string) => {
@@ -114,15 +139,23 @@ export function registerIpc(): void {
   h('servers:save', (_e, input: ServerInput) => {
     if (input.id) {
       ssh.disconnect(input.id)
+      closeFtp(input.id)
       beszel.invalidate(input.id)
     }
     return store.upsertServer(input)
   })
   h('servers:remove', (_e, id: string) => {
     ssh.disconnect(id)
+    closeFtp(id)
     store.removeServer(id)
   })
-  h('servers:test', (_e, id: string) => ssh.testConnection(id))
+  h('servers:test', async (_e, id: string) => {
+    const server = serverFor(id)
+    if (!isFtp(server)) return ssh.testConnection(id)
+    closeFtp(id)
+    const home = await remoteFs(id).home()
+    return `${server.protocol === 'ftps' ? 'FTPS' : 'FTP'} login ok, home folder ${home}`
+  })
   h('servers:importSshConfig', () => {
     const file = join(homedir(), '.ssh', 'config')
     if (!existsSync(file)) return 0
@@ -148,11 +181,23 @@ export function registerIpc(): void {
     return added
   })
 
-  // sftp
-  h('sftp:home', (_e, id: string) => ssh.remoteHome(id))
-  h('sftp:list', (_e, id: string, p: string) => ssh.sftpList(id, p))
-  h('sftp:read', (_e, id: string, p: string) => ssh.sftpRead(id, p))
-  h('sftp:write', (_e, id: string, p: string, c: string) => ssh.sftpWrite(id, p, c))
+  // server files (SFTP, or FTP for ftp/ftps servers)
+  h('sftp:home', (_e, id: string) => remoteFs(id).home())
+  h('sftp:list', (_e, id: string, p: string) => remoteFs(id).list(p))
+  h('sftp:read', (_e, id: string, p: string) => remoteFs(id).readText(p))
+  h('sftp:write', (_e, id: string, p: string, c: string) => remoteFs(id).writeText(p, c))
+  h('sftp:mkdir', (_e, id: string, p: string) => remoteFs(id).mkdir(p))
+  h('sftp:rename', (_e, id: string, from: string, to: string) => remoteFs(id).rename(from, to))
+  h('sftp:remove', (_e, id: string, p: string, dir: boolean) => remoteFs(id).remove(p, dir))
+  h('sftp:cache', (_e, id: string, p: string, size?: number, mtime?: number) => cacheRemoteFile(id, p, size, mtime))
+  h('sftp:openExternal', async (_e, id: string, p: string) => {
+    await openSafely(await cacheRemoteFile(id, p))
+  })
+  h('transfer:start', (_e, req: TransferRequest) => startTransfer(req))
+  h('transfer:cancel', (_e, id: string) => cancelTransfer(id))
+
+  // developer: resource usage per terminal (polled only while the readout is on)
+  h('usage:get', () => usageReport(sessionSamples()))
 
   // git
   h('git:status', (_e, cwd: string) => git.status(cwd))

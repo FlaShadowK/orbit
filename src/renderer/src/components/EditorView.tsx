@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Tab } from '@shared/types'
-import { monaco, modelUri } from '@/lib/monaco'
+import { editorTheme, monaco, modelUri } from '@/lib/monaco'
 import { langFor } from '@/lib/util'
 import { useStore } from '@/store'
 import { MarkdownPreview } from './MarkdownPreview'
+import { FileFallback } from './FileViewer'
 
 type MdMode = NonNullable<Tab['mdMode']>
 const MD_MODES: { id: MdMode; label: string }[] = [
@@ -13,6 +14,16 @@ const MD_MODES: { id: MdMode; label: string }[] = [
 ]
 
 export const isMarkdown = (path?: string): boolean => !!path && /\.(md|markdown|mdx)$/i.test(path)
+export const isSvg = (path?: string): boolean => !!path && /\.svg$/i.test(path)
+
+/** An SVG drawn from the editor's current text, so edits show up live. */
+function SvgPreview({ source }: { source: string }) {
+  return (
+    <div className="md-preview svg-preview checker">
+      <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(source)}`} alt="" draggable={false} />
+    </div>
+  )
+}
 
 /** last saved content per model uri — used for dirty tracking and external reloads */
 const savedContent = new Map<string, string>()
@@ -63,7 +74,10 @@ export function EditorView({ tab, focused }: { tab: Tab; focused: boolean }) {
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const markdown = isMarkdown(tab.filePath)
+  const isMd = isMarkdown(tab.filePath)
+  const svg = isSvg(tab.filePath)
+  // markdown and SVG get Edit / Split / Preview
+  const markdown = isMd || svg
   const mode: MdMode = markdown ? (tab.mdMode ?? 'preview') : 'edit'
   const [mdSource, setMdSource] = useState('')
 
@@ -72,7 +86,7 @@ export function EditorView({ tab, focused }: { tab: Tab; focused: boolean }) {
     const uri = modelUri(tab.filePath!, tab.serverId)
     const key = uri.toString()
     const editor = monaco.editor.create(host.current!, {
-      theme: 'orbit',
+      theme: editorTheme(),
       fontFamily: '"JetBrains Mono Variable", Menlo, monospace',
       fontSize: 13,
       lineHeight: 20,
@@ -85,7 +99,7 @@ export function EditorView({ tab, focused }: { tab: Tab; focused: boolean }) {
       bracketPairColorization: { enabled: true },
       renderWhitespace: 'selection',
       // prose reads better wrapped, and a wrapped editor never opens scrolled sideways in split view
-      wordWrap: markdown ? 'on' : 'off'
+      wordWrap: isMd ? 'on' : 'off'
     })
     editorRef.current = editor
     // ⌘S is handled by the app menu → saveTab()
@@ -166,10 +180,10 @@ export function EditorView({ tab, focused }: { tab: Tab; focused: boolean }) {
         </div>
       )}
       <div className="editor-body">
-        {error && <div className="pane-message error">{error}</div>}
+        {error && <FileFallback tab={tab} message={error} />}
         {loading && !error && <div className="pane-message">Loading…</div>}
         <div className="editor-host" ref={host} style={{ visibility: error ? 'hidden' : 'visible' }} />
-        {markdown && mode !== 'edit' && !error && !loading && (
+        {markdown && mode !== 'edit' && !error && !loading && (svg ? <SvgPreview source={mdSource} /> :
           <MarkdownPreview source={mdSource} filePath={tab.filePath!} serverId={tab.serverId} />
         )}
       </div>

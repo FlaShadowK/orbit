@@ -11,12 +11,14 @@ import { accelerator, type Command } from '@shared/keys'
 import { createMainWindow, mainWindow, markQuitting } from './windows'
 import { checkForUpdates, initUpdater } from './updater'
 import { startPerf } from './perf'
+import { handleFileScheme, registerFileScheme } from './fileProtocol'
 
 const IS_MAC = process.platform === 'darwin'
 
 app.setName('Orbit')
 // separate profile for testing a second instance next to your everyday Orbit
 if (process.env.ORBIT_USER_DATA) app.setPath('userData', process.env.ORBIT_USER_DATA)
+registerFileScheme()
 
 function buildMenu(): void {
   const send = (cmd: string) => () => BrowserWindow.getFocusedWindow()?.webContents.send('orbit:command', cmd)
@@ -60,8 +62,8 @@ function buildMenu(): void {
       label: 'File',
       submenu: [
         item('New Space…', 'newSpace'),
-        item('New Agent Tab', 'newAgent'),
         item('New Terminal Tab', 'newTerminal'),
+        item('New Agent Tab', 'newAgent'),
         item('Save', 'save'),
         item('Close Tab', 'closeTab'),
         { type: 'separator' },
@@ -102,6 +104,7 @@ app.whenReady().then(async () => {
   store.load()
   store.onServersChanged = (servers) => emit({ type: 'servers', servers })
   shellEnv()
+  handleFileScheme()
   await startMcp()
   registerIpc()
   buildMenu()

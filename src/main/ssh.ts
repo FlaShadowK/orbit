@@ -2,7 +2,7 @@ import { Client, type ClientChannel, type ConnectConfig, type SFTPWrapper } from
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join, posix, relative, sep } from 'path'
-import type { DirEntry, Server } from '@shared/types'
+import type { DirEntry, Server, SshStage } from '@shared/types'
 import { store } from './store'
 import { shellEnv } from './shellEnv'
 
@@ -39,6 +39,12 @@ function releaseExec(conn: Conn): void {
 }
 
 const pool = new Map<string, Promise<Conn>>()
+
+/** listeners for the connection steps of a server being connected right now (SSH tab loaders) */
+const stageListeners = new Map<string, Set<(s: SshStage) => void>>()
+function stage(serverId: string, s: SshStage): void {
+  stageListeners.get(serverId)?.forEach((cb) => cb(s))
+}
 
 export function shQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`
@@ -96,6 +102,7 @@ function buildConfig(server: Server): ConnectConfig {
 async function openClient(server: Server): Promise<Client> {
   const cfg = buildConfig(server)
   if (server.jumpServerId) {
+    stage(server.id, 'jump')
     const jump = await connect(server.jumpServerId)
     cfg.sock = await new Promise<ClientChannel>((res, rej) =>
       jump.client.forwardOut('127.0.0.1', 0, cfg.host!, cfg.port!, (err, ch) =>
@@ -103,9 +110,12 @@ async function openClient(server: Server): Promise<Client> {
       )
     )
   }
+  stage(server.id, 'connecting')
   return new Promise((resolve, reject) => {
     const client = new Client()
     client
+      .on('connect', () => stage(server.id, 'handshake'))
+      .on('handshake', () => stage(server.id, 'auth'))
       .on('ready', () => resolve(client))
       .on('error', reject)
       .on('keyboard-interactive', (_n, _i, _l, prompts, finish) =>
@@ -117,6 +127,8 @@ async function openClient(server: Server): Promise<Client> {
 
 export function connect(idOrName: string): Promise<Conn> {
   const server = resolveServer(idOrName)
+  if (server.protocol === 'ftp' || server.protocol === 'ftps')
+    return Promise.reject(new Error(`${server.name} is an FTP server: only file access is available (no shell)`))
   let p = pool.get(server.id)
   if (!p) {
     p = openClient(server).then((client) => {
@@ -215,7 +227,8 @@ export async function sftpList(idOrName: string, path: string): Promise<DirEntry
             name: e.filename,
             path: posix.join(path, e.filename),
             dir: (e.attrs.mode & 0o170000) === 0o040000,
-            size: e.attrs.size
+            size: e.attrs.size,
+            mtime: e.attrs.mtime ? e.attrs.mtime * 1000 : undefined
           }))
           .sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name))
       )
@@ -242,7 +255,7 @@ export async function sftpWrite(idOrName: string, path: string, content: string)
   return new Promise((res, rej) => s.writeFile(path, content, (err) => (err ? rej(err) : res())))
 }
 
-async function sftpMkdirp(s: SFTPWrapper, dir: string): Promise<void> {
+export async function sftpMkdirp(s: SFTPWrapper, dir: string): Promise<void> {
   if (!dir || dir === '/' || dir === '.') return
   const exists = await new Promise<boolean>((res) => s.stat(dir, (err) => res(!err)))
   if (exists) return
@@ -283,10 +296,27 @@ export async function upload(
 export async function openShell(
   serverId: string,
   cols: number,
-  rows: number
+  rows: number,
+  onStage?: (s: SshStage) => void
 ): Promise<ClientChannel> {
-  const { client } = await connect(serverId)
   const server = resolveServer(serverId)
+  let listeners: Set<(s: SshStage) => void> | undefined
+  if (onStage) {
+    listeners = stageListeners.get(server.id) ?? new Set()
+    stageListeners.set(server.id, listeners)
+    listeners.add(onStage)
+    onStage('connecting')
+  }
+  let client: Client
+  try {
+    ;({ client } = await connect(serverId))
+  } finally {
+    if (onStage && listeners) {
+      listeners.delete(onStage)
+      if (!listeners.size) stageListeners.delete(server.id)
+    }
+  }
+  onStage?.('shell')
   return new Promise((res, rej) =>
     client.shell({ term: 'xterm-256color', cols, rows }, (err, stream) => {
       if (err) return rej(err)

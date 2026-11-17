@@ -31,7 +31,16 @@ const PATHS: Record<string, string> = {
   diff: 'M12 3v14M5 10h14M5 21h14',
   'arrow-down': 'M12 5v14M19 12l-7 7-7-7',
   'arrow-up': 'M12 19V5M5 12l7-7 7 7',
-  lock: 'M5 11h14v10H5zM8 11V7a4 4 0 018 0v4'
+  lock: 'M5 11h14v10H5zM8 11V7a4 4 0 018 0v4',
+  image: 'M4 5h16v14H4zM4 15l4.5-4.5 4 4L15 12l5 5M15.5 9.5h.01',
+  music: 'M9 18V5l11-2v13M9 18a3 3 0 11-6 0 3 3 0 016 0zM20 16a3 3 0 11-6 0 3 3 0 016 0z',
+  play: 'M7 4.5v15l12-7.5z',
+  'folder-plus': 'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2zM12 10.5v5M9.5 13h5',
+  copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
+  upload: 'M12 16V4M7 9l5-5 5 5M4 20h16',
+  download: 'M12 4v12M7 11l5 5 5-5M4 20h16',
+  laptop: 'M5 5h14v10H5zM2.5 19h19',
+  cpu: 'M7 7h10v10H7zM10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4'
 }
 
 export function Icon({ name, size = 14 }: { name: string; size?: number }) {

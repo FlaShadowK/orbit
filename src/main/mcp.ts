@@ -5,6 +5,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { z } from 'zod'
 import { store } from './store'
 import * as ssh from './ssh'
+import { remoteFs } from './remoteFs'
 import { emit, logActivity, setStatus } from './events'
 
 const PREFERRED_PORT = 47821
@@ -92,7 +93,7 @@ function buildServer(ctx: { spaceId?: string }): McpServer {
     },
     async ({ server, path }) =>
       logged('sftp_list', server, path, async () => {
-        const entries = await ssh.sftpList(server, path)
+        const entries = await remoteFs(server).list(path)
         return { ok: true, text: entries.map((e) => `${e.dir ? 'd' : '-'} ${e.dir ? '' : String(e.size ?? 0).padStart(10)} ${e.name}`).join('\n') || '(empty)' }
       })
   )
@@ -104,7 +105,7 @@ function buildServer(ctx: { spaceId?: string }): McpServer {
       inputSchema: { server: z.string(), path: z.string() },
       annotations: { readOnlyHint: true }
     },
-    async ({ server, path }) => logged('sftp_read', server, path, async () => ({ ok: true, text: await ssh.sftpRead(server, path) }))
+    async ({ server, path }) => logged('sftp_read', server, path, async () => ({ ok: true, text: await remoteFs(server).readText(path) }))
   )
 
   mcp.registerTool(
@@ -115,7 +116,7 @@ function buildServer(ctx: { spaceId?: string }): McpServer {
     },
     async ({ server, path, content }) =>
       logged('sftp_write', server, `${path} (${content.length} chars)`, async () => {
-        await ssh.sftpWrite(server, path, content)
+        await remoteFs(server).writeText(path, content)
         return { ok: true, text: `Wrote ${content.length} chars to ${path}` }
       })
   )

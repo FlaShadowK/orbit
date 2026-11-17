@@ -1,7 +1,7 @@
 import { useShallow } from 'zustand/react/shallow'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { GitChange, GitChangeKind, Space } from '@shared/types'
-import { monaco } from '@/lib/monaco'
+import { editorTheme, monaco } from '@/lib/monaco'
 import { langFor } from '@/lib/util'
 import { useStore } from '@/store'
 import { Icon } from './Icon'
@@ -143,7 +143,7 @@ function DiffView({ root, change, sideBySide }: { root: string; change: GitChang
 
   useEffect(() => {
     const ed = monaco.editor.createDiffEditor(host.current!, {
-      theme: 'orbit',
+      theme: editorTheme(),
       readOnly: true,
       originalEditable: false,
       automaticLayout: true,

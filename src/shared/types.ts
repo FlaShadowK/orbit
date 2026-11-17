@@ -20,8 +20,12 @@ export interface Tab {
   serverId?: string
   /** editor: local absolute path, or remote path when serverId is set */
   filePath?: string
-  /** sftp browser cwd */
+  /** sftp browser: remote folder; terminal: folder the shell starts in (default: space root) */
   cwd?: string
+  /** sftp browser: folder shown in the local (this computer) pane */
+  localCwd?: string
+  /** sftp browser: local pane hidden */
+  hideLocal?: boolean
   /** markdown editor tabs: rendered preview, source, or both side by side */
   mdMode?: 'preview' | 'edit' | 'split'
 }
@@ -31,6 +35,8 @@ export interface Space {
   name: string
   root: string
   color: string
+  /** sidebar folder this space is filed under */
+  groupId?: string
   tabs: Tab[]
   /** the focused tab (always shown in `layout` when there is one) */
   activeTabId?: string
@@ -40,7 +46,17 @@ export interface Space {
   split?: { tabId: string; direction: 'row' | 'column' }
 }
 
+/** A collapsible folder of spaces in the sidebar. */
+export interface SpaceGroup {
+  id: string
+  name: string
+  collapsed?: boolean
+}
+
 export type AuthMethod = 'agent' | 'key' | 'password'
+
+/** ssh = shell + SFTP; ftp/ftps = file access only (ftps = explicit TLS) */
+export type ServerProtocol = 'ssh' | 'ftp' | 'ftps'
 
 export interface Server {
   id: string
@@ -48,6 +64,8 @@ export interface Server {
   host: string
   port: number
   username: string
+  /** default ssh */
+  protocol?: ServerProtocol
   auth: AuthMethod
   /** path to private key on disk (auth = key) */
   keyPath?: string
@@ -161,6 +179,12 @@ export interface Settings {
   mcpToken?: string
   /** check GitHub releases on startup and every few hours (default on) */
   autoUpdate?: boolean
+  /** color theme id (see shared/themes) */
+  theme?: string
+  /** developer settings unlocked (click the version in Settings five times) */
+  devMode?: boolean
+  /** developer: CPU / memory under each space and tab */
+  showUsage?: boolean
 }
 
 export interface ActivityEntry {
@@ -231,6 +255,45 @@ export interface DirEntry {
   path: string
   dir: boolean
   size?: number
+  /** last modified (ms) */
+  mtime?: number
+}
+
+/** Steps of opening an SSH tab, shown while it connects. */
+export type SshStage = 'connecting' | 'jump' | 'handshake' | 'auth' | 'shell'
+
+export interface TransferState {
+  id: string
+  serverId: string
+  direction: 'up' | 'down'
+  /** what is being copied, e.g. "photo.png" or "3 items" */
+  label: string
+  /** destination folder (local for downloads, remote for uploads) */
+  target: string
+  bytes: number
+  total: number
+  files: number
+  filesDone: number
+  current?: string
+  status: 'scanning' | 'running' | 'done' | 'error' | 'cancelled'
+  error?: string
+}
+
+/** Resource use of one tab's processes (developer setting). */
+export interface TabUsage {
+  /** % of one core */
+  cpu?: number
+  /** resident memory, bytes */
+  mem?: number
+  /** ssh: bytes/s received */
+  net?: number
+  procs?: number
+}
+
+export interface UsageReport {
+  tabs: Record<string, TabUsage>
+  /** Orbit itself (all Electron processes) */
+  app: TabUsage
 }
 
 export interface OrbitInfo {
@@ -256,6 +319,10 @@ export type MainEvent =
   | { type: 'git'; root: string }
   | { type: 'detached'; tabId: string; detached: boolean }
   | { type: 'update'; state: UpdateState }
+  | { type: 'sshStage'; tabId: string; stage: SshStage }
+  | { type: 'transfer'; transfer: TransferState }
+  /** settings changed in some window (theme etc.) */
+  | { type: 'settings'; settings: Settings }
 
 export type UpdateState =
   | { status: 'idle' | 'checking' | 'none'; version?: string; error?: string }

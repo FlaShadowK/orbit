@@ -7,12 +7,35 @@ import { emit } from './events'
 const HIDDEN = new Set(['.git', 'node_modules', '.DS_Store', '.next', '.idea', '.turbo', '.cache'])
 const MAX_READ = 10 * 1024 * 1024
 
-export async function listDir(dir: string): Promise<DirEntry[]> {
+/** `stats` adds size and modification time (the file browser shows them; the tree doesn't need them). */
+export async function listDir(dir: string, stats = false): Promise<DirEntry[]> {
   const entries = await fs.readdir(dir, { withFileTypes: true })
-  return entries
+  const list: DirEntry[] = entries
     .filter((e) => e.name !== '.DS_Store')
     .map((e) => ({ name: e.name, path: join(dir, e.name), dir: e.isDirectory() }))
-    .sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name))
+  if (stats)
+    await Promise.all(
+      list.map(async (e) => {
+        try {
+          const st = await fs.stat(e.path)
+          e.dir = st.isDirectory()
+          if (!e.dir) e.size = st.size
+          e.mtime = st.mtimeMs
+        } catch {
+          /* broken link */
+        }
+      })
+    )
+  return list.sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name))
+}
+
+export async function makeDir(path: string): Promise<void> {
+  await fs.mkdir(path, { recursive: true })
+}
+
+export async function renamePath(from: string, to: string): Promise<void> {
+  if (await fs.stat(to).then(() => true, () => false)) throw new Error(`${to} already exists`)
+  await fs.rename(from, to)
 }
 
 export async function readFile(path: string): Promise<string> {

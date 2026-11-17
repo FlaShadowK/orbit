@@ -1,7 +1,7 @@
 import { useShallow } from 'zustand/react/shallow'
 import { useEffect, useState, type ReactNode } from 'react'
 import type { AgentInfo, Space, Tab } from '@shared/types'
-import { queueAgentEvent, selectActiveSpace, useStore } from './store'
+import { queueAgentEvent, selectActiveSpace, trackTransfer, useStore, visibleSpaces } from './store'
 import { Sidebar, createSpaceFromPicker } from './components/Sidebar'
 import { TabBar, closeTabWithCleanup } from './components/TabBar'
 import { reloadIfClean, saveTab } from './components/EditorView'
@@ -52,6 +52,12 @@ function useMainEvents(): void {
           break
         case 'update':
           st().set({ update: e.state })
+          break
+        case 'settings':
+          st().set({ settings: e.settings })
+          break
+        case 'transfer':
+          trackTransfer(e.transfer)
           break
       }
     })
@@ -123,7 +129,7 @@ function useMainEvents(): void {
         if (t) s.setActiveTab(t.id)
         e.preventDefault()
       } else if (si) {
-        const sp = s.spaces[si - 1]
+        const sp = visibleSpaces(s.spaces, s.groups, s.activeSpaceId)[si - 1]
         if (sp) s.setActiveSpace(sp.id)
         e.preventDefault()
       } else if (cycle && space && (IS_MAC ? ['[', ']', '{', '}'].includes(e.key) : true)) {
@@ -188,7 +194,7 @@ function Welcome({ space }: { space?: Space }) {
               )}
             </div>
           ))}
-          <button className="welcome-card" onClick={newTerminal}>
+          <button className="welcome-card" onClick={() => newTerminal()}>
             <Icon name="terminal" size={20} />
             <span>Terminal</span>
             <small>shell in project root</small>
@@ -201,7 +207,7 @@ function Welcome({ space }: { space?: Space }) {
         </div>
       )}
       <p className="muted small">
-        {keyLabel('newAgent', IS_MAC)} agent · {keyLabel('newTerminal', IS_MAC)} terminal · {keyLabel('palette', IS_MAC)} commands ·{' '}
+        {keyLabel('newTerminal', IS_MAC)} terminal · {keyLabel('newAgent', IS_MAC)} agent · {keyLabel('palette', IS_MAC)} commands ·{' '}
         {keyLabel('splitRow', IS_MAC)} split · {keyLabel('toggleFiles', IS_MAC)} files
       </p>
     </div>
@@ -211,6 +217,28 @@ function Welcome({ space }: { space?: Space }) {
 export function App() {
   const target = detachedTarget()
   return target ? <DetachedApp {...target} /> : <MainApp />
+}
+
+/** Developer setting: sample CPU / memory of every terminal every two seconds while it's on. */
+function UsagePoller() {
+  const on = useStore((s) => !!(s.settings.devMode && s.settings.showUsage))
+  useEffect(() => {
+    if (!on) {
+      useStore.getState().set({ usage: undefined })
+      return
+    }
+    let live = true
+    const tick = (): void => {
+      window.orbit.usage().then((usage) => live && useStore.getState().set({ usage }), () => {})
+    }
+    tick()
+    const t = setInterval(tick, 2000)
+    return () => {
+      live = false
+      clearInterval(t)
+    }
+  }, [on])
+  return null
 }
 
 /** Clears the green "done" dot a few seconds after the user looks at the tab. */
@@ -249,6 +277,7 @@ function MainApp() {
   return (
     <div className={`app platform-${platform}`}>
       <DoneClearer />
+      <UsagePoller />
       <Sidebar />
       <main className="main">
         {space ? <TabBar space={space} /> : <div className="tabbar drag" />}

@@ -14,6 +14,7 @@ import { store } from './store'
 import { countPty } from './perf'
 import { Scrollback } from './scrollback'
 import { OutputBatcher } from './outputBatch'
+import type { SessionSample } from './usage'
 
 const SCROLLBACK = 256 * 1024
 
@@ -36,6 +37,9 @@ interface Session {
   guesser?: StatusGuesser
   /** agents only: classifies output while working, polled to report activity changes */
   tracker?: ActivityTracker
+  /** ssh: bytes received, and when usage was last sampled (developer setting) */
+  rx?: number
+  rxSample?: { at: number; rx: number }
 }
 
 const sessions = new Map<string, Session>()
@@ -54,6 +58,7 @@ function onData(id: string, data: string): void {
   const s = sessions.get(id)
   if (s) {
     s.buffer.push(data)
+    if (s.rx != null) s.rx += data.length
     if (s.tracker || s.guesser) {
       const text = stripAnsi(data)
       s.tracker?.feedText(text)
@@ -74,7 +79,7 @@ function onExit(id: string, code: number | null): void {
 }
 
 /** Start a session; if one already exists for this id (renderer reload), replay its buffer. */
-export async function startSession(spec: SessionSpec): Promise<{ replay?: string }> {
+export async function startSession(spec: SessionSpec): Promise<{ replay?: string; error?: string }> {
   const existing = sessions.get(spec.id)
   if (existing) {
     existing.resize(spec.cols, spec.rows)
@@ -85,16 +90,18 @@ export async function startSession(spec: SessionSpec): Promise<{ replay?: string
   if (spec.kind === 'ssh') {
     let stream: ClientChannel
     try {
-      stream = await openShell(spec.serverId!, spec.cols, spec.rows)
+      stream = await openShell(spec.serverId!, spec.cols, spec.rows, (stage) => emit({ type: 'sshStage', tabId: spec.id, stage }))
     } catch (err) {
-      const msg = `\r\n\x1b[31mSSH connection failed: ${(err as Error).message}\x1b[0m\r\n`
+      const message = (err as Error).message
+      const msg = `\r\n\x1b[31mSSH connection failed: ${message}\x1b[0m\r\n`
       sendTermBatch([[spec.id, msg]])
       send('term:exit', spec.id, 1)
-      return {}
+      return { error: message }
     }
     const session: Session = {
       buffer: new Scrollback(SCROLLBACK),
       agent: false,
+      rx: 0,
       write: (d) => stream.write(d),
       resize: (cols, rows) => stream.setWindow(rows, cols, 0, 0),
       kill: () => stream.close()
@@ -239,6 +246,19 @@ async function scan(): Promise<void> {
   } finally {
     scanning = false
   }
+}
+
+/** Process / traffic snapshot of every live terminal, for the resource-usage readout. */
+export function sessionSamples(): SessionSample[] {
+  const now = Date.now()
+  return [...sessions].map(([id, s]) => {
+    if (s.pid) return { id, pid: s.pid }
+    const prev = s.rxSample
+    const rx = s.rx ?? 0
+    s.rxSample = { at: now, rx }
+    const net = prev && now > prev.at ? Math.round(((rx - prev.rx) * 1000) / (now - prev.at)) : 0
+    return { id, net }
+  })
 }
 
 /** Agents running in each terminal right now (renderer reload). */

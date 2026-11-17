@@ -1,17 +1,31 @@
 import type {
   ActivityEntry, AgentBase, AgentInfo, AgentStatus, DirEntry, MainEvent, OrbitInfo, Server, ServerInput,
-  SessionSpec, Settings, Space, UpdateState, GitChange, GitStatus, BeszelSnapshot, BeszelSystemRef, StatRange
+  SessionSpec, Settings, Space, SpaceGroup, UpdateState, GitChange, GitStatus, BeszelSnapshot, BeszelSystemRef, StatRange,
+  UsageReport
 } from '../shared/types'
 
+export interface TransferRequest {
+  serverId: string
+  direction: 'up' | 'down'
+  sources: { path: string; dir?: boolean; size?: number }[]
+  target: string
+}
+
 export interface OrbitApi {
+  /** theme the window was created with (applied before the first paint) */
+  initialTheme?: string
   info(): Promise<OrbitInfo>
-  getSpaces(): Promise<{ spaces: Space[]; activeSpaceId?: string }>
-  setSpaces(spaces: Space[], activeSpaceId?: string): Promise<void>
+  getSpaces(): Promise<{ spaces: Space[]; activeSpaceId?: string; groups?: SpaceGroup[] }>
+  setSpaces(spaces: Space[], activeSpaceId?: string, groups?: SpaceGroup[]): Promise<void>
   getSettings(): Promise<Settings>
   setSettings(patch: Partial<Settings>): Promise<Settings>
   pickFolder(): Promise<string | null>
   pickFile(): Promise<string | null>
   reveal(path: string): Promise<void>
+  /** open with the system's default app (throws with the OS error) */
+  openPath(path: string): Promise<void>
+  /** move to the Trash / Recycle Bin */
+  trash(path: string): Promise<void>
   openExternal(url: string): Promise<void>
 
   listAgents(): Promise<AgentInfo[]>
@@ -20,7 +34,7 @@ export interface OrbitApi {
   runningAgents(): Promise<Record<string, AgentBase>>
   setTabTitle(tabId: string, title: string): Promise<void>
 
-  termStart(spec: SessionSpec): Promise<{ replay?: string }>
+  termStart(spec: SessionSpec): Promise<{ replay?: string; error?: string }>
   termWrite(id: string, data: string): void
   termResize(id: string, cols: number, rows: number): void
   termKill(id: string): Promise<void>
@@ -31,12 +45,15 @@ export interface OrbitApi {
   onTermData(cb: (id: string, data: string) => void): () => void
   onTermExit(cb: (id: string, code: number | null) => void): () => void
 
-  fsList(dir: string): Promise<DirEntry[]>
+  /** `stats` adds size and modification time */
+  fsList(dir: string, stats?: boolean): Promise<DirEntry[]>
   fsRead(path: string): Promise<string>
   /** a local image as a data: URL (null if missing, too big or not an image) */
   fsImage(path: string): Promise<string | null>
   fsWrite(path: string, content: string): Promise<void>
   fsWatch(root: string): Promise<void>
+  fsMkdir(path: string): Promise<void>
+  fsRename(from: string, to: string): Promise<void>
 
   listServers(): Promise<Server[]>
   serverSecretFlags(id: string): Promise<{ password: boolean; privateKey: boolean; passphrase: boolean; beszelPassword: boolean }>
@@ -52,6 +69,17 @@ export interface OrbitApi {
   sftpList(serverId: string, path: string): Promise<DirEntry[]>
   sftpRead(serverId: string, path: string): Promise<string>
   sftpWrite(serverId: string, path: string, content: string): Promise<void>
+  sftpMkdir(serverId: string, path: string): Promise<void>
+  sftpRename(serverId: string, from: string, to: string): Promise<void>
+  sftpRemove(serverId: string, path: string, dir: boolean): Promise<void>
+  /** download to a local cache (for previews); returns the local path */
+  remoteCache(serverId: string, path: string, size?: number, mtime?: number): Promise<string>
+  /** open a server file with the default app (a local copy) */
+  remoteOpenExternal(serverId: string, path: string): Promise<void>
+  /** copy files between this computer and a server; progress arrives as `transfer` events */
+  startTransfer(req: TransferRequest): Promise<string>
+  cancelTransfer(id: string): Promise<void>
+  usage(): Promise<UsageReport>
 
   git: {
     status(cwd: string): Promise<GitStatus>

@@ -8,7 +8,10 @@ function listen<T extends unknown[]>(ch: string, cb: (...args: T) => void): () =
   return () => ipcRenderer.removeListener(ch, h)
 }
 
+const themeArg = process.argv.find((a) => a.startsWith('--orbit-theme='))
+
 const api: OrbitApi = {
+  initialTheme: themeArg?.slice('--orbit-theme='.length),
   info: inv('app:info') as OrbitApi['info'],
   getSpaces: inv('spaces:get') as OrbitApi['getSpaces'],
   setSpaces: inv('spaces:set') as OrbitApi['setSpaces'],
@@ -17,6 +20,8 @@ const api: OrbitApi = {
   pickFolder: inv('dialog:folder') as OrbitApi['pickFolder'],
   pickFile: inv('dialog:file') as OrbitApi['pickFile'],
   reveal: inv('shell:reveal') as OrbitApi['reveal'],
+  openPath: inv('shell:openPath') as OrbitApi['openPath'],
+  trash: inv('shell:trash') as OrbitApi['trash'],
   openExternal: inv('shell:open') as OrbitApi['openExternal'],
 
   listAgents: inv('agents:list') as OrbitApi['listAgents'],
@@ -42,6 +47,8 @@ const api: OrbitApi = {
   fsImage: inv('fs:image') as OrbitApi['fsImage'],
   fsWrite: inv('fs:write') as OrbitApi['fsWrite'],
   fsWatch: inv('fs:watch') as OrbitApi['fsWatch'],
+  fsMkdir: inv('fs:mkdir') as OrbitApi['fsMkdir'],
+  fsRename: inv('fs:rename') as OrbitApi['fsRename'],
 
   listServers: inv('servers:list') as OrbitApi['listServers'],
   serverSecretFlags: inv('servers:secret') as OrbitApi['serverSecretFlags'],
@@ -56,6 +63,14 @@ const api: OrbitApi = {
   sftpList: inv('sftp:list') as OrbitApi['sftpList'],
   sftpRead: inv('sftp:read') as OrbitApi['sftpRead'],
   sftpWrite: inv('sftp:write') as OrbitApi['sftpWrite'],
+  sftpMkdir: inv('sftp:mkdir') as OrbitApi['sftpMkdir'],
+  sftpRename: inv('sftp:rename') as OrbitApi['sftpRename'],
+  sftpRemove: inv('sftp:remove') as OrbitApi['sftpRemove'],
+  remoteCache: inv('sftp:cache') as OrbitApi['remoteCache'],
+  remoteOpenExternal: inv('sftp:openExternal') as OrbitApi['remoteOpenExternal'],
+  startTransfer: inv('transfer:start') as OrbitApi['startTransfer'],
+  cancelTransfer: inv('transfer:cancel') as OrbitApi['cancelTransfer'],
+  usage: inv('usage:get') as OrbitApi['usage'],
 
   git: {
     status: inv('git:status') as OrbitApi['git']['status'],

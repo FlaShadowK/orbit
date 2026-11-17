@@ -1,12 +1,65 @@
 import { useShallow } from 'zustand/react/shallow'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Settings } from '@shared/types'
+import { THEMES } from '@shared/themes'
 import { useStore } from '@/store'
+
+/** Theme cards: a tiny painted window per theme. Picking one applies it right away. */
+function ThemePicker() {
+  const current = useStore((s) => s.settings.theme ?? 'orbit')
+  return (
+    <div className="theme-grid">
+      {THEMES.map((t) => (
+        <button
+          key={t.id}
+          className={`theme-card ${current === t.id ? 'on' : ''}`}
+          onClick={() => useStore.getState().updateSettings({ theme: t.id })}
+          title={`${t.label} (${t.kind})`}
+        >
+          <span className="theme-swatch" style={{ background: t.ui.bg, borderColor: t.ui['line-2'] }}>
+            <span className="ts-side" style={{ background: t.ui['bg-1'], borderColor: t.ui.line }} />
+            <span className="ts-lines">
+              <i style={{ background: t.ui.accent, width: '46%' }} />
+              <i style={{ background: t.ui['fg-2'], width: '70%' }} />
+              <i style={{ background: t.ui['fg-3'], width: '58%' }} />
+              <i style={{ background: t.ui['accent-2'], width: '36%' }} />
+            </span>
+            <span className="ts-dot" style={{ background: t.ui.warn }} />
+          </span>
+          <span className="theme-label">{t.label}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** Hidden until unlocked: tools for looking under the hood. */
+function DeveloperBox() {
+  const settings = useStore((s) => s.settings)
+  const update = useStore((s) => s.updateSettings)
+  if (!settings.devMode) return null
+  return (
+    <div className="span2 mcp-box dev-box">
+      <div className="mcp-title">Developer</div>
+      <label className="check-row">
+        <input type="checkbox" checked={!!settings.showUsage} onChange={(e) => update({ showUsage: e.target.checked })} />
+        Show resource usage under each space and tab
+      </label>
+      <p className="muted">
+        CPU and memory of every terminal and everything running in it (agents, dev servers, builds), sampled every 2 seconds. SSH tabs show
+        incoming traffic. Costs nothing while off.
+      </p>
+      <button className="link-btn" onClick={() => update({ devMode: false, showUsage: false })}>Hide developer settings</button>
+    </div>
+  )
+}
 
 export function SettingsModal() {
   const { settingsOpen, info, agents, set, notify } = useStore(useShallow((s) => ({ settingsOpen: s.settingsOpen, info: s.info, agents: s.agents, set: s.set, notify: s.notify })))
   const [settings, setSettings] = useState<Settings | null>(null)
   const [custom, setCustom] = useState('')
+  const devMode = useStore((s) => !!s.settings.devMode)
+  const versionClicks = useRef<number[]>([])
 
   useEffect(() => {
     if (!settingsOpen) return
@@ -35,6 +88,10 @@ export function SettingsModal() {
       <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
         <h2>Settings</h2>
         <div className="form-grid">
+          <div className="span2">
+            <div className="field-label">Theme</div>
+            <ThemePicker />
+          </div>
           <label className="span2">
             Shell <span className="muted">(empty = $SHELL)</span>
             <input value={settings.shell ?? ''} placeholder="/bin/zsh" onChange={(e) => setSettings({ ...settings, shell: e.target.value })} />
@@ -64,9 +121,28 @@ export function SettingsModal() {
               />
               Check GitHub for new releases and download them automatically
             </label>
-            <p className="muted">You're on Orbit {info?.version}. Updates install when you restart Orbit.</p>
+            <p className="muted">
+              You're on{' '}
+              <span
+                className="version-tap"
+                onClick={() => {
+                  // five quick clicks on the version unlock the developer settings
+                  const now = Date.now()
+                  versionClicks.current = [...versionClicks.current.filter((t) => now - t < 2500), now]
+                  if (versionClicks.current.length >= 5 && !devMode) {
+                    versionClicks.current = []
+                    useStore.getState().updateSettings({ devMode: true })
+                    notify('Developer settings unlocked')
+                  }
+                }}
+              >
+                Orbit {info?.version}
+              </span>
+              . Updates install when you restart Orbit.
+            </p>
             <button className="btn" onClick={() => window.orbit.checkForUpdates()}>Check now</button>
           </div>
+          <DeveloperBox />
           <div className="span2 mcp-box">
             <div className="mcp-title">Orbit MCP server</div>
             <code>{info?.mcpUrl}</code>

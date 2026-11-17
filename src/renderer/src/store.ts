@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ActivityEntry, AgentActivity, AgentBase, AgentInfo, AgentStatus, GitStatus, MainEvent, OrbitInfo, Server, Space, Tab, UpdateState } from '@shared/types'
+import type { ActivityEntry, AgentActivity, AgentBase, AgentInfo, AgentStatus, GitStatus, MainEvent, OrbitInfo, Server, Settings, Space, SpaceGroup, Tab, TabUsage, TransferState, UpdateState, UsageReport } from '@shared/types'
 import { basename, IS_MAC, SPACE_COLORS, uid } from './lib/util'
 import { keyLabel } from '@shared/keys'
 import { hasTab, leaf, leafCount, placeTab as placeInLayout, prune, removeTab, replaceTab, setRatio, tabsIn, type DropSide } from '@shared/layout'
@@ -11,6 +11,9 @@ interface State {
   info?: OrbitInfo
   spaces: Space[]
   activeSpaceId?: string
+  /** sidebar folders of spaces */
+  groups: SpaceGroup[]
+  settings: Settings
   servers: Server[]
   agents: AgentInfo[]
   statuses: Record<string, AgentStatus>
@@ -36,11 +39,22 @@ interface State {
   git: Record<string, GitStatus>
   /** server whose stats tiles are being customized */
   statsEditor?: string
+  /** file copies to/from servers, by id (finished ones linger briefly) */
+  transfers: Record<string, TransferState>
+  /** developer: latest resource usage sample (only while the readout is on) */
+  usage?: UsageReport
 
   init(): Promise<void>
   addSpace(root: string, name?: string): Space
   removeSpace(id: string): void
   updateSpace(id: string, patch: Partial<Space>): void
+  addGroup(name?: string): SpaceGroup
+  updateGroup(id: string, patch: Partial<SpaceGroup>): void
+  /** delete a folder; its spaces move back to the top level */
+  removeGroup(id: string): void
+  /** file a space under a folder (or the top level), optionally right before another space */
+  moveSpaceToGroup(spaceId: string, groupId: string | undefined, beforeId?: string): void
+  updateSettings(patch: Partial<Settings>): Promise<void>
   setActiveSpace(id: string): void
   addTab(tab: Partial<Tab> & Pick<Tab, 'kind'>, spaceId?: string, opts?: { side?: DropSide; background?: boolean }): Tab | undefined
   closeTab(tabId: string): void
@@ -62,7 +76,8 @@ interface State {
   openChanges(): void
   openFile(path: string, serverId?: string): void
   newAgent(agentId?: string): void
-  newTerminal(): void
+  /** a shell tab, starting in `cwd` (default: the space folder) */
+  newTerminal(cwd?: string): void
   openSsh(server: Server): void
   openSftp(server: Server): void
   setDirty(tabId: string, dirty: boolean): void
@@ -84,8 +99,8 @@ function persist(get: () => State): void {
   if (!persistEnabled) return
   window.clearTimeout(persistTimer)
   persistTimer = window.setTimeout(() => {
-    const { spaces, activeSpaceId } = get()
-    window.orbit.setSpaces(spaces, activeSpaceId)
+    const { spaces, activeSpaceId, groups } = get()
+    window.orbit.setSpaces(spaces, activeSpaceId, groups)
   }, 300)
 }
 
@@ -142,6 +157,9 @@ export const useStore = create<State>((set, get) => {
   return {
     ready: false,
     spaces: [],
+    groups: [],
+    settings: { fontSize: 13, agentCommands: {}, defaultAgent: 'claude' },
+    transfers: {},
     servers: [],
     agents: [],
     statuses: {},
@@ -161,15 +179,24 @@ export const useStore = create<State>((set, get) => {
     async init() {
       // optional: a renderer hot-reloaded onto an older main process doesn't have it yet
       window.orbit.updateState?.().then((update) => set({ update }), () => {})
-      const [info, { spaces, activeSpaceId }, servers, agents, statuses, activity] = await Promise.all([
+      const [info, { spaces, activeSpaceId, groups }, servers, agents, statuses, activity, settings] = await Promise.all([
         window.orbit.info(),
         window.orbit.getSpaces(),
         window.orbit.listServers(),
         window.orbit.listAgents(),
         window.orbit.getStatuses(),
-        window.orbit.getActivity()
+        window.orbit.getActivity(),
+        window.orbit.getSettings()
       ])
-      set({ info, spaces: spaces.map(normalizeSpace), activeSpaceId: activeSpaceId ?? spaces[0]?.id, servers, agents, statuses, activity, ready: true })
+      const groupIds = new Set((groups ?? []).map((g) => g.id))
+      set({
+        info,
+        // a space filed under a folder that no longer exists goes back to the top level
+        spaces: spaces.map((s) => normalizeSpace(s.groupId && !groupIds.has(s.groupId) ? { ...s, groupId: undefined } : s)),
+        groups: groups ?? [],
+        activeSpaceId: activeSpaceId ?? spaces[0]?.id,
+        servers, agents, statuses, activity, settings, ready: true
+      })
       window.orbit.runningAgents?.().then((running) => set({ running }), () => {})
       for (const s of spaces) {
         window.orbit.fsWatch(s.root)
@@ -202,6 +229,41 @@ export const useStore = create<State>((set, get) => {
 
     updateSpace(id, patch) {
       mutateSpaces((spaces) => spaces.map((s) => (s.id === id ? { ...s, ...patch } : s)))
+    },
+
+    addGroup(name = 'New folder') {
+      const group: SpaceGroup = { id: uid(), name }
+      set({ groups: [...get().groups, group] })
+      persist(get)
+      return group
+    },
+
+    updateGroup(id, patch) {
+      set({ groups: get().groups.map((g) => (g.id === id ? { ...g, ...patch } : g)) })
+      persist(get)
+    },
+
+    removeGroup(id) {
+      mutateSpaces((spaces) => spaces.map((s) => (s.groupId === id ? { ...s, groupId: undefined } : s)), { groups: get().groups.filter((g) => g.id !== id) })
+    },
+
+    moveSpaceToGroup(spaceId, groupId, beforeId) {
+      if (spaceId === beforeId) return
+      // open the folder it lands in, so the space doesn't seem to vanish
+      if (groupId) set({ groups: get().groups.map((g) => (g.id === groupId ? { ...g, collapsed: false } : g)) })
+      mutateSpaces((spaces) => {
+        const moving = spaces.find((s) => s.id === spaceId)
+        if (!moving) return spaces
+        const rest = spaces.filter((s) => s.id !== spaceId)
+        const at = beforeId ? rest.findIndex((s) => s.id === beforeId) : -1
+        const next = { ...moving, groupId }
+        return at < 0 ? [...rest, next] : [...rest.slice(0, at), next, ...rest.slice(at)]
+      })
+    },
+
+    async updateSettings(patch) {
+      set({ settings: { ...get().settings, ...patch } })
+      set({ settings: await window.orbit.setSettings(patch) })
     },
 
     setActiveSpace(id) {
@@ -402,8 +464,8 @@ export const useStore = create<State>((set, get) => {
       get().addTab({ kind: 'agent', agent: id, title: agent?.label ?? id, agentSessionId: agent?.base === 'claude' || id === 'claude' ? uid() : undefined })
     },
 
-    newTerminal() {
-      get().addTab({ kind: 'terminal', title: 'Terminal' })
+    newTerminal(cwd) {
+      get().addTab({ kind: 'terminal', title: cwd ? basename(cwd) : 'Terminal', cwd })
     },
 
     openSsh(server) {
@@ -472,7 +534,67 @@ function flushAgentEvents(): void {
   useStore.setState(patch)
 }
 
+/** Keep a transfer's latest progress; finished ones disappear after a few seconds (errors stay longer). */
+export function trackTransfer(t: TransferState): void {
+  const s = useStore.getState()
+  s.set({ transfers: { ...s.transfers, [t.id]: t } })
+  if (t.status === 'error') s.notify(`${t.direction === 'up' ? 'Upload' : 'Download'} of ${t.label} failed: ${t.error ?? 'unknown error'}`, 'error')
+  if (t.status === 'done' || t.status === 'cancelled' || t.status === 'error')
+    setTimeout(() => {
+      const { transfers } = useStore.getState()
+      if (transfers[t.id]?.status !== t.status) return
+      const next = { ...transfers }
+      delete next[t.id]
+      useStore.getState().set({ transfers: next })
+    }, t.status === 'error' ? 12000 : 4000)
+}
+
 export const selectActiveSpace = (s: State): Space | undefined => s.spaces.find((x) => x.id === s.activeSpaceId)
+
+/** Resource use of a space: all of its tabs added up. */
+export function spaceUsage(space: Space, usage?: UsageReport): TabUsage | undefined {
+  if (!usage) return undefined
+  let cpu = 0
+  let mem = 0
+  let net = 0
+  let any = false
+  for (const t of space.tabs) {
+    const u = usage.tabs[t.id]
+    if (!u) continue
+    any = true
+    cpu += u.cpu ?? 0
+    mem += u.mem ?? 0
+    net += u.net ?? 0
+  }
+  return any ? { cpu: Math.round(cpu * 10) / 10, mem, net } : undefined
+}
+
+/** "3.2% · 184 MB", or "↓ 1.2 KB/s" for SSH-only. */
+export function usageText(u?: TabUsage): string {
+  if (!u) return ''
+  const parts: string[] = []
+  if (u.cpu != null) parts.push(`${u.cpu < 10 ? u.cpu.toFixed(1) : Math.round(u.cpu)}% CPU`)
+  if (u.mem) parts.push(u.mem >= 1024 ** 3 ? `${(u.mem / 1024 ** 3).toFixed(2)} GB` : `${Math.round(u.mem / 1024 ** 2)} MB`)
+  if (u.net) parts.push(`↓ ${u.net >= 1024 ** 2 ? `${(u.net / 1024 ** 2).toFixed(1)} MB/s` : u.net >= 1024 ? `${(u.net / 1024).toFixed(1)} KB/s` : `${u.net} B/s`}`)
+  return parts.join(' · ')
+}
+
+/** Sidebar order: top-level spaces first, then each folder's. */
+export function sidebarSections(spaces: Space[], groups: SpaceGroup[]): { group?: SpaceGroup; spaces: Space[] }[] {
+  const known = new Set(groups.map((g) => g.id))
+  return [
+    { spaces: spaces.filter((s) => !s.groupId || !known.has(s.groupId)) },
+    ...groups.map((group) => ({ group, spaces: spaces.filter((s) => s.groupId === group.id) }))
+  ]
+}
+
+/**
+ * The space rows on screen, top to bottom: what ⌃1–9 switch between. A collapsed folder hides
+ * its spaces except the one you're in.
+ */
+export function visibleSpaces(spaces: Space[], groups: SpaceGroup[], activeSpaceId?: string): Space[] {
+  return sidebarSections(spaces, groups).flatMap((sec) => (sec.group?.collapsed ? sec.spaces.filter((s) => s.id === activeSpaceId) : sec.spaces))
+}
 
 /** The most active working agent in a space (for the sidebar indicator). */
 export function spaceActivity(space: Space, statuses: Record<string, AgentStatus>, activities: Record<string, AgentActivity>): AgentActivity | undefined {

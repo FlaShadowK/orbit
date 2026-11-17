@@ -1,8 +1,8 @@
 import { useEffect } from 'react'
-import { disablePersistence, isAgentTab, queueAgentEvent, useStore } from '@/store'
+import { disablePersistence, isAgentTab, queueAgentEvent, trackTransfer, useStore } from '@/store'
 import { Icon } from './Icon'
 import { StatusDot } from './StatusDot'
-import { TAB_ICON } from './TabBar'
+import { tabIcon } from './TabBar'
 import { PaneContent } from './Workspace'
 import { saveTab } from './EditorView'
 
@@ -31,6 +31,8 @@ export function DetachedApp({ tabId, spaceId }: { tabId: string; spaceId: string
     const offEvent = window.orbit.onEvent((e) => {
       if (queueAgentEvent(e)) return
       if (e.type === 'servers') st().set({ servers: e.servers })
+      if (e.type === 'settings') st().set({ settings: e.settings })
+      if (e.type === 'transfer') trackTransfer(e.transfer)
     })
     const offCmd = window.orbit.onCommand((cmd) => {
       const t = st().spaces.find((x) => x.id === spaceId)?.tabs.find((x) => x.id === tabId)
@@ -58,7 +60,7 @@ export function DetachedApp({ tabId, spaceId }: { tabId: string; spaceId: string
   return (
     <div className={`detached-app platform-${platform}`}>
       <div className="detached-bar drag">
-        <span className="tab-icon"><Icon name={isAgentTab(tab, running) ? 'agent' : TAB_ICON[tab.kind]} size={13} /></span>
+        <span className="tab-icon"><Icon name={isAgentTab(tab, running) ? 'agent' : tabIcon(tab)} size={13} /></span>
         <span className="detached-title">{tab.title}</span>
         <span className="muted small">· {space.name}</span>
         {isAgentTab(tab, running) && <StatusDot status={status} activity={activity} />}

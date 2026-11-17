@@ -1,8 +1,10 @@
 import { useShallow } from 'zustand/react/shallow'
 import { useEffect, useState } from 'react'
-import type { AuthMethod, BeszelSystemRef, Server, ServerInput } from '@shared/types'
+import type { AuthMethod, BeszelSystemRef, Server, ServerInput, ServerProtocol } from '@shared/types'
 import { useStore } from '@/store'
-import { SPACE_COLORS } from '@/lib/util'
+import { SPACE_COLORS, isFileOnly } from '@/lib/util'
+
+const DEFAULT_PORT: Record<ServerProtocol, number> = { ssh: 22, ftp: 21, ftps: 21 }
 
 const EMPTY: ServerInput = { name: '', host: '', port: 22, username: 'root', auth: 'agent', tags: [], color: SPACE_COLORS[1] }
 
@@ -42,6 +44,14 @@ export function ServerModal() {
   if (!serverModal) return null
   const close = (): void => set({ serverModal: null })
   const upd = (patch: Partial<ServerInput>): void => setForm((f) => ({ ...f, ...patch }))
+  const ftp = isFileOnly(form)
+  const setProtocol = (protocol: ServerProtocol): void =>
+    setForm((f) => {
+      const was = f.protocol ?? 'ssh'
+      // follow the protocol's usual port unless a custom one was typed
+      const port = f.port === DEFAULT_PORT[was] || !f.port ? DEFAULT_PORT[protocol] : f.port
+      return { ...f, protocol: protocol === 'ssh' ? undefined : protocol, port, auth: protocol === 'ssh' ? f.auth : 'password', jumpServerId: protocol === 'ssh' ? f.jumpServerId : undefined }
+    })
   const updBeszel = (patch: Partial<NonNullable<ServerInput['beszel']>>): void =>
     setForm((f) => ({ ...f, beszel: { url: '', email: '', ...f.beszel, ...patch } }))
 
@@ -73,7 +83,7 @@ export function ServerModal() {
         ...form,
         name: form.name.trim() || form.host.trim(),
         host: form.host.trim(),
-        port: Number(form.port) || 22,
+        port: Number(form.port) || DEFAULT_PORT[form.protocol ?? 'ssh'],
         tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
         beszel: beszelOn && form.beszel?.url ? form.beszel : undefined,
         secret: { password, privateKey, passphrase, beszelPassword }
@@ -111,6 +121,17 @@ export function ServerModal() {
               ))}
             </div>
           </label>
+          <label className="span2">
+            Protocol
+            <div className="segmented">
+              {(['ssh', 'ftp', 'ftps'] as ServerProtocol[]).map((p) => (
+                <button key={p} className={(form.protocol ?? 'ssh') === p ? 'on' : ''} onClick={() => setProtocol(p)}>
+                  {p === 'ssh' ? 'SSH / SFTP' : p === 'ftp' ? 'FTP' : 'FTPS (TLS)'}
+                </button>
+              ))}
+            </div>
+            {form.protocol === 'ftp' && <span className="muted small">Plain FTP sends the password unencrypted. Prefer FTPS or SFTP when the server supports it.</span>}
+          </label>
           <label className="span2-left">
             Host
             <input value={form.host} placeholder="203.0.113.10 or example.com" onChange={(e) => upd({ host: e.target.value })} />
@@ -123,22 +144,22 @@ export function ServerModal() {
             User
             <input value={form.username} onChange={(e) => upd({ username: e.target.value })} />
           </label>
-          <label>
+          {!ftp && <label>
             Auth
             <select value={form.auth} onChange={(e) => upd({ auth: e.target.value as AuthMethod })}>
               <option value="agent">SSH agent / default keys</option>
               <option value="key">Private key</option>
               <option value="password">Password</option>
             </select>
-          </label>
+          </label>}
 
-          {form.auth === 'password' && (
+          {(form.auth === 'password' || ftp) && (
             <label className="span2">
               Password {secretFlags.password && <span className="muted">(saved — leave empty to keep)</span>}
               <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
             </label>
           )}
-          {form.auth === 'key' && (
+          {form.auth === 'key' && !ftp && (
             <>
               <label className="span2">
                 Key file
@@ -166,7 +187,7 @@ export function ServerModal() {
             </>
           )}
 
-          <label>
+          {!ftp && <label>
             Jump host
             <select value={form.jumpServerId ?? ''} onChange={(e) => upd({ jumpServerId: e.target.value || undefined })}>
               <option value="">None</option>
@@ -174,8 +195,8 @@ export function ServerModal() {
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
-          </label>
-          <label>
+          </label>}
+          <label className={ftp ? 'span2' : ''}>
             Default directory
             <input value={form.defaultDir ?? ''} placeholder="/var/www/app" onChange={(e) => upd({ defaultDir: e.target.value || undefined })} />
           </label>

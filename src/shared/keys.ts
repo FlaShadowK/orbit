@@ -14,8 +14,9 @@ interface Binding {
 
 export const BINDINGS: Record<Command, Binding> = {
   newSpace: { mac: 'Cmd+Shift+N', other: 'Ctrl+Shift+N' },
-  newAgent: { mac: 'Cmd+T', other: 'Ctrl+Shift+T' },
-  newTerminal: { mac: 'Cmd+Shift+T', other: 'Ctrl+Shift+E' },
+  // ⌘T always opens a plain shell; agents get the shifted variant
+  newTerminal: { mac: 'Cmd+T', other: 'Ctrl+Shift+T' },
+  newAgent: { mac: 'Cmd+Shift+T', other: 'Ctrl+Shift+A' },
   save: { mac: 'Cmd+S', other: 'Ctrl+S' },
   closeTab: { mac: 'Cmd+W', other: 'Ctrl+Shift+W' },
   palette: { mac: 'Cmd+K', other: 'Ctrl+Shift+P' },

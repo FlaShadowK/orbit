@@ -2,11 +2,13 @@ import { app, safeStorage } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import type { Server, ServerInput, ServerSecret, Settings, Space } from '@shared/types'
+import type { Server, ServerInput, ServerSecret, Settings, Space, SpaceGroup } from '@shared/types'
 
 interface Data {
   spaces: Space[]
   activeSpaceId?: string
+  /** sidebar folders */
+  groups?: SpaceGroup[]
   servers: Server[]
   secrets: Record<string, string>
   settings: Settings
@@ -34,6 +36,7 @@ class Store {
         this.data = {
           spaces: parsed.spaces ?? [],
           activeSpaceId: parsed.activeSpaceId,
+          groups: parsed.groups ?? [],
           servers: parsed.servers ?? [],
           secrets: parsed.secrets ?? {},
           settings: { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) }
@@ -57,12 +60,13 @@ class Store {
   }
 
   // ---- spaces
-  getSpaces(): { spaces: Space[]; activeSpaceId?: string } {
-    return { spaces: this.data.spaces, activeSpaceId: this.data.activeSpaceId }
+  getSpaces(): { spaces: Space[]; activeSpaceId?: string; groups: SpaceGroup[] } {
+    return { spaces: this.data.spaces, activeSpaceId: this.data.activeSpaceId, groups: this.data.groups ?? [] }
   }
-  setSpaces(spaces: Space[], activeSpaceId?: string): void {
+  setSpaces(spaces: Space[], activeSpaceId?: string, groups?: SpaceGroup[]): void {
     this.data.spaces = spaces
     this.data.activeSpaceId = activeSpaceId
+    if (groups) this.data.groups = groups
     this.save()
   }
 

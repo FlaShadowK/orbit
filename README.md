@@ -38,10 +38,11 @@ Coding agents are good at writing code. Shipping it still means juggling a termi
 
 ### 🌌 Spaces & agent tabs
 - **One space per project folder**, each with its own tabs (agents, terminals, SSH, editors, SFTP). Layouts are saved and restored.
+- **Folders in the sidebar**: group spaces into collapsible folders (drag a space onto one, or right-click → Move to folder). A collapsed folder still shows when an agent inside needs you.
 - **Agent tabs** for Claude Code, Codex, Gemini CLI, opencode, or any custom command (Settings).
 - **Your own aliases**: add commands like `claude-work` or `claude-personal` from a space's start page. Shell aliases and functions work, and Orbit still adds its MCP server and status hooks.
 - **Detected wherever they start**: run `claude`, `codex`, `gemini` or an alias in any terminal tab and it becomes an agent tab automatically.
-- **Quiet status dot**: it breathes while the agent works, turns amber with **Needs you** when the agent waits for input, and turns green when the agent is done. You also get a desktop notification when an agent needs you.
+- **Quiet status dot**: it breathes while the agent works, turns amber and pulses for half a minute when the agent waits for input, and turns green when the agent is done. You also get a desktop notification when an agent needs you.
 - **Claude tabs are wired up for you**: the Orbit MCP server (`--mcp-config`) and status hooks (`--settings`) are injected, and each tab resumes its own conversation after a restart (`--session-id` / `--resume`).
 
 ### 🖥️ Terminal
@@ -52,8 +53,10 @@ Coding agents are good at writing code. Shipping it still means juggling a termi
 
 ### 📝 Editor
 - **Monaco**, the editor behind VS Code. Files reload live when an agent changes them on disk.
-- Remote files open over SFTP and save back with ⌘S.
-- **Markdown preview**: `.md` files open rendered, with **Edit · Split · Preview** modes, live updates, highlighted code blocks and local images.
+- Remote files open over SFTP or FTP and save back with ⌘S.
+- **Markdown and SVG preview**: `.md` and `.svg` files open rendered, with **Edit · Split · Preview** modes and live updates.
+- **Viewer for images, PDF, video and audio**, local or on a server. Anything else gets **Open with default app**.
+- Right-click a file or folder in the tree: **Open with Default App**, **Reveal in Finder**, **Open in Terminal**, **Copy Path**.
 
 ### 🌿 Git panel & review tab
 - Branch switcher, plus **Review · Pull · Commit · Push** in one row.
@@ -61,7 +64,9 @@ Coding agents are good at writing code. Shipping it still means juggling a termi
 - Orbit locks branch switching while an agent is working on the branch.
 
 ### 🛰️ Servers
-- Host, user, key / password / ssh-agent, jump host, default directory, plus tags and notes that agents can read.
+- **SSH / SFTP, FTP and FTPS**. Host, user, key / password / ssh-agent, jump host, default directory, plus tags and notes that agents can read.
+- SSH tabs show each connection step (connect, handshake, authenticate, shell) while they connect, and a plain-language error with **Retry** if it fails.
+- **Two-pane file browser**: this computer on the left, the server on the right. Drag files or whole folders either way (or straight from Finder) to upload and download, with progress and cancel.
 - Secrets are encrypted with the OS keychain (Electron `safeStorage`). Import hosts from `~/.ssh/config`.
 
 ### 📈 Live server stats (Beszel)
@@ -82,6 +87,9 @@ Runs at `http://127.0.0.1:47821/mcp` and requires a bearer token.
 
 Every call is logged in the **Activity** panel (⌘J). Settings → **Register in Claude Code globally** also gives Claude sessions outside Orbit access to the server.
 
+### 🎨 Themes
+Six themes (four dark, two light) in Settings or the command palette. They repaint the app, terminals and editor at once.
+
 ### 🔄 Auto-update
 Orbit checks GitHub Releases and updates itself in place.
 
@@ -89,8 +97,8 @@ Orbit checks GitHub Releases and updates itself in place.
 
 | Action | macOS | Windows / Linux |
 |---|---|---|
-| New agent tab | <kbd>⌘T</kbd> | <kbd>Ctrl+Shift+T</kbd> |
-| New terminal tab | <kbd>⌘⇧T</kbd> | <kbd>Ctrl+Shift+E</kbd> |
+| New terminal tab | <kbd>⌘T</kbd> | <kbd>Ctrl+Shift+T</kbd> |
+| New agent tab | <kbd>⌘⇧T</kbd> | <kbd>Ctrl+Shift+A</kbd> |
 | New space | <kbd>⌘⇧N</kbd> | <kbd>Ctrl+Shift+N</kbd> |
 | Command palette | <kbd>⌘K</kbd> | <kbd>Ctrl+Shift+P</kbd> |
 | Switch tab | <kbd>⌘1..9</kbd> | <kbd>Alt+1..9</kbd> |

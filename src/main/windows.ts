@@ -2,6 +2,8 @@ import { BrowserWindow, screen, shell } from 'electron'
 import { join } from 'path'
 import { isSafeExternalUrl } from './links'
 import { emit } from './events'
+import { store } from './store'
+import { themeById } from '@shared/themes'
 
 const IS_MAC = process.platform === 'darwin'
 
@@ -20,9 +22,11 @@ function load(win: BrowserWindow, hash = ''): void {
 }
 
 function baseWindow(opts: Electron.BrowserWindowConstructorOptions): BrowserWindow {
+  const theme = themeById(store.getSettings().theme)
   const win = new BrowserWindow({
     show: false,
-    backgroundColor: '#0b0d12',
+    // paint the theme's background from the first frame (no dark flash in a light theme)
+    backgroundColor: theme.ui.bg,
     titleBarStyle: IS_MAC ? 'hiddenInset' : 'default',
     autoHideMenuBar: !IS_MAC,
     icon: IS_MAC ? undefined : join(__dirname, '../../resources/icon.png'),
@@ -30,7 +34,10 @@ function baseWindow(opts: Electron.BrowserWindowConstructorOptions): BrowserWind
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
-      contextIsolation: true
+      contextIsolation: true,
+      // Chromium's built-in PDF viewer (the file viewer shows PDFs)
+      plugins: true,
+      additionalArguments: [`--orbit-theme=${theme.id}`]
     },
     ...opts
   })

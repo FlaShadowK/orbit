@@ -4,7 +4,8 @@ import { createSpaceFromPicker } from './Sidebar'
 import { Icon } from './Icon'
 import { TAB_ICON } from './TabBar'
 import { keyLabel } from '@shared/keys'
-import { IS_MAC } from '@/lib/util'
+import { IS_MAC, isFileOnly } from '@/lib/util'
+import { THEMES } from '@shared/themes'
 
 interface Cmd {
   id: string
@@ -28,8 +29,8 @@ function OpenPalette() {
 
   const cmds = useMemo<Cmd[]>(() => {
     const list: Cmd[] = []
-    for (const a of state.agents.filter((x) => x.available)) list.push({ id: 'agent-' + a.id, label: `New ${a.label} agent`, icon: 'agent', run: () => state.newAgent(a.id) })
-    list.push({ id: 'term', label: 'New terminal', hint: keyLabel('newTerminal', IS_MAC), icon: 'terminal', run: state.newTerminal })
+    for (const a of state.agents.filter((x) => x.available)) list.push({ id: 'agent-' + a.id, label: `New ${a.label} agent`, hint: a.id === state.agents.find((x) => x.available)?.id ? keyLabel('newAgent', IS_MAC) : undefined, icon: 'agent', run: () => state.newAgent(a.id) })
+    list.push({ id: 'term', label: 'New terminal', hint: keyLabel('newTerminal', IS_MAC), icon: 'terminal', run: () => state.newTerminal() })
     list.push({ id: 'space', label: 'New space from folder…', hint: keyLabel('newSpace', IS_MAC), icon: 'folder', run: createSpaceFromPicker })
     list.push({ id: 'server', label: 'Add server…', icon: 'server', run: () => state.set({ serverModal: { mode: 'new' } }) })
     list.push({
@@ -50,8 +51,9 @@ function OpenPalette() {
     list.push({ id: 'files', label: 'Toggle file tree', hint: keyLabel('toggleFiles', IS_MAC), icon: 'sidebar', run: () => state.set({ showFiles: !state.showFiles }) })
     list.push({ id: 'activity', label: 'Toggle activity log', hint: keyLabel('toggleActivity', IS_MAC), icon: 'activity', run: () => state.set({ showActivity: !state.showActivity }) })
     list.push({ id: 'settings', label: 'Settings', icon: 'settings', run: () => state.set({ settingsOpen: true }) })
+    for (const t of THEMES) list.push({ id: 'theme-' + t.id, label: `Theme: ${t.label}`, hint: t.kind, icon: 'settings', run: () => state.updateSettings({ theme: t.id }) })
     for (const s of state.servers) {
-      list.push({ id: 'ssh-' + s.id, label: `SSH: ${s.name}`, hint: s.host, icon: 'terminal', run: () => state.openSsh(s) })
+      if (!isFileOnly(s)) list.push({ id: 'ssh-' + s.id, label: `SSH: ${s.name}`, hint: s.host, icon: 'terminal', run: () => state.openSsh(s) })
       list.push({ id: 'sftp-' + s.id, label: `Files: ${s.name}`, hint: s.host, icon: 'files', run: () => state.openSftp(s) })
     }
     for (const sp of state.spaces) {
