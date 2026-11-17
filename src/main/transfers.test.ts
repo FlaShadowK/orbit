@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync, copyFileSync, readdirSync, statSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { join, posix } from 'path'
 import type { TransferState } from '@shared/types'
 
-// The "server" is a second temp folder: remote paths are plain local paths here.
+// The "server" is a second temp folder. Remote paths stay POSIX (/site/index.html) like on a
+// real server, and are mapped onto that folder, so the test behaves the same on Windows.
 const events: TransferState[] = []
+let remote = ''
+const disk = (p: string): string => join(remote, ...p.split('/').filter(Boolean))
 vi.mock('./events', () => ({ emit: (e: { transfer: TransferState }) => events.push(e.transfer) }))
 vi.mock('./ftp', () => ({ closeFtp: vi.fn() }))
 vi.mock('./remoteFs', () => ({
@@ -13,19 +16,18 @@ vi.mock('./remoteFs', () => ({
   isFtp: () => false,
   remoteFs: () => ({
     list: async (dir: string) =>
-      readdirSync(dir).map((name) => {
-        const p = join(dir, name)
-        const st = statSync(p)
-        return { name, path: p, dir: st.isDirectory(), size: st.isDirectory() ? undefined : st.size }
+      readdirSync(disk(dir)).map((name) => {
+        const st = statSync(join(disk(dir), name))
+        return { name, path: posix.join(dir, name), dir: st.isDirectory(), size: st.isDirectory() ? undefined : st.size }
       }),
-    mkdir: async (p: string) => void mkdirSync(p, { recursive: true }),
-    upload: async (local: string, remote: string, onBytes: (n: number) => void) => {
-      copyFileSync(local, remote)
+    mkdir: async (p: string) => void mkdirSync(disk(p), { recursive: true }),
+    upload: async (local: string, to: string, onBytes: (n: number) => void) => {
+      copyFileSync(local, disk(to))
       onBytes(statSync(local).size)
     },
-    download: async (remote: string, local: string, onBytes: (n: number) => void) => {
-      copyFileSync(remote, local)
-      onBytes(statSync(remote).size)
+    download: async (from: string, local: string, onBytes: (n: number) => void) => {
+      copyFileSync(disk(from), local)
+      onBytes(statSync(disk(from)).size)
     }
   })
 }))
@@ -33,7 +35,6 @@ vi.mock('./remoteFs', () => ({
 const { startTransfer } = await import('./transfers')
 
 let local: string
-let remote: string
 
 beforeEach(() => {
   events.length = 0
@@ -61,7 +62,7 @@ describe('startTransfer', () => {
     writeFileSync(join(local, 'site', 'assets', 'app.js'), 'console.log(1)')
     writeFileSync(join(local, 'site', '.DS_Store'), 'junk')
 
-    const id = startTransfer({ serverId: 's', direction: 'up', sources: [{ path: join(local, 'site') }], target: remote })
+    const id = startTransfer({ serverId: 's', direction: 'up', sources: [{ path: join(local, 'site') }], target: '/' })
     const end = await finished(id)
 
     expect(end.status).toBe('done')
@@ -84,7 +85,7 @@ describe('startTransfer', () => {
     const id = startTransfer({
       serverId: 's',
       direction: 'down',
-      sources: [{ path: join(remote, 'logs'), dir: true }, { path: join(remote, 'photo.png'), size: 4 }],
+      sources: [{ path: '/logs', dir: true }, { path: '/photo.png', size: 4 }],
       target: local
     })
     const end = await finished(id)
@@ -96,7 +97,7 @@ describe('startTransfer', () => {
   })
 
   it('reports an error when a source is missing', async () => {
-    const id = startTransfer({ serverId: 's', direction: 'up', sources: [{ path: join(local, 'nope.txt') }], target: remote })
+    const id = startTransfer({ serverId: 's', direction: 'up', sources: [{ path: join(local, 'nope.txt') }], target: '/' })
     const end = await finished(id)
     expect(end.status).toBe('error')
     expect(end.error).toMatch(/ENOENT/)
